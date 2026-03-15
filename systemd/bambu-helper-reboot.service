@@ -1,0 +1,9 @@
+[Unit]
+Description=Weekly reboot for BambuHelper
+DefaultDependencies=no
+Before=shutdown.target reboot.target halt.target
+After=bambu-helper.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/systemctl reboot

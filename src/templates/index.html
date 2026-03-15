@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BambuHelper</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg:      #08080f;
+      --surface: #12121e;
+      --border:  #252540;
+      --accent:  #00c8ff;
+      --text:    #e8e8f0;
+      --muted:   #6060a0;
+      --green:   #00c840;
+      --orange:  #ffa000;
+      --red:     #dc2020;
+    }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      font-size: 14px;
+      min-height: 100vh;
+      padding: 20px;
+    }
+    h1 {
+      font-size: 22px;
+      color: var(--accent);
+      margin-bottom: 4px;
+    }
+    .subtitle { color: var(--muted); font-size: 12px; margin-bottom: 24px; }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 16px;
+      max-width: 680px;
+    }
+    h2 { font-size: 14px; color: var(--accent); text-transform: uppercase;
+         letter-spacing: 1px; margin-bottom: 16px; }
+    .field { margin-bottom: 14px; }
+    label { display: block; color: var(--muted); font-size: 12px; margin-bottom: 4px; }
+    input[type=text], input[type=password], input[type=number], select {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      color: var(--text);
+      font-size: 14px;
+      padding: 8px 10px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    input:focus, select:focus { border-color: var(--accent); }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .row3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+    .toggle-row { display: flex; align-items: center; gap: 10px; }
+    input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; }
+    .mode-tabs { display: flex; gap: 8px; margin-bottom: 16px; }
+    .mode-tab {
+      padding: 6px 18px;
+      border-radius: 20px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 13px;
+      transition: all 0.2s;
+    }
+    .mode-tab.active { background: var(--accent); border-color: var(--accent); color: #000; font-weight: 600; }
+    .lan-fields, .cloud-fields { display: none; }
+    .lan-fields.visible, .cloud-fields.visible { display: block; }
+    .btn {
+      background: var(--accent);
+      color: #000;
+      border: none;
+      border-radius: 6px;
+      padding: 10px 28px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+    .btn:hover { opacity: 0.85; }
+    .alert {
+      padding: 10px 14px;
+      border-radius: 6px;
+      margin-bottom: 16px;
+      font-size: 13px;
+      max-width: 680px;
+    }
+    .alert-error { background: #2a0808; border: 1px solid var(--red); color: #ff8080; }
+    .alert-success { background: #082a10; border: 1px solid var(--green); color: #80ff80; }
+    .status-card {
+      max-width: 680px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+    .status-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+    .stat { background: var(--bg); border-radius: 6px; padding: 10px; }
+    .stat-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
+    .stat-value { font-size: 20px; font-weight: 700; color: var(--text); margin-top: 2px; }
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .badge-running { background: #003a14; color: var(--green); border: 1px solid var(--green); }
+    .badge-pause   { background: #2a1800; color: var(--orange); border: 1px solid var(--orange); }
+    .badge-idle    { background: #12121e; color: var(--muted); border: 1px solid var(--muted); }
+    .badge-failed  { background: #2a0808; color: var(--red); border: 1px solid var(--red); }
+    footer { max-width: 680px; color: var(--muted); font-size: 11px; margin-top: 8px; }
+    a { color: var(--accent); text-decoration: none; }
+  </style>
+</head>
+<body>
+  <h1>BambuHelper</h1>
+  <p class="subtitle">Bambu Lab printer display · Raspberry Pi</p>
+
+  {% if errors %}
+  <div class="alert alert-error">⚠ {{ errors }}</div>
+  {% endif %}
+  {% if saved %}
+  <div class="alert alert-success">✓ Config saved. Reconnecting…</div>
+  {% endif %}
+
+  <!-- Live status -->
+  <div class="status-card" id="status-card">
+    <h2>Printer Status</h2>
+    <div class="status-grid" id="status-grid">
+      <div class="stat"><div class="stat-label">State</div><div class="stat-value" id="s-state">—</div></div>
+      <div class="stat"><div class="stat-label">Progress</div><div class="stat-value" id="s-progress">—</div></div>
+      <div class="stat"><div class="stat-label">Nozzle</div><div class="stat-value" id="s-nozzle">—</div></div>
+      <div class="stat"><div class="stat-label">Bed</div><div class="stat-value" id="s-bed">—</div></div>
+      <div class="stat"><div class="stat-label">Layer</div><div class="stat-value" id="s-layer">—</div></div>
+      <div class="stat"><div class="stat-label">ETA</div><div class="stat-value" id="s-eta">—</div></div>
+    </div>
+  </div>
+
+  <!-- Config form -->
+  <form method="POST" action="/save">
+    <div class="card">
+      <h2>Connection</h2>
+      <div class="mode-tabs">
+        <button type="button" class="mode-tab {% if cfg.connection_mode == 'lan' %}active{% endif %}"
+                onclick="setMode('lan')">LAN</button>
+        <button type="button" class="mode-tab {% if cfg.connection_mode == 'cloud' %}active{% endif %}"
+                onclick="setMode('cloud')">Cloud</button>
+      </div>
+      <input type="hidden" name="connection_mode" id="connection_mode" value="{{ cfg.connection_mode }}">
+
+      <div class="lan-fields {% if cfg.connection_mode == 'lan' %}visible{% endif %}" id="lan-fields">
+        <div class="row">
+          <div class="field">
+            <label>Printer IP Address</label>
+            <input type="text" name="printer_ip" value="{{ cfg.printer_ip }}" placeholder="192.168.1.100">
+          </div>
+          <div class="field">
+            <label>Access Code</label>
+            <input type="password" name="printer_access_code" value="{{ cfg.printer_access_code }}"
+                   placeholder="Leave blank to keep existing" autocomplete="off">
+          </div>
+        </div>
+      </div>
+
+      <div class="cloud-fields {% if cfg.connection_mode == 'cloud' %}visible{% endif %}" id="cloud-fields">
+        <div class="row">
+          <div class="field">
+            <label>Cloud Token</label>
+            <input type="password" name="bambu_token" value="{{ cfg.bambu_token }}"
+                   placeholder="Leave blank to keep existing" autocomplete="off">
+          </div>
+          <div class="field">
+            <label>Region</label>
+            <select name="bambu_region">
+              <option value="us" {% if cfg.bambu_region == 'us' %}selected{% endif %}>US / EU</option>
+              <option value="cn" {% if cfg.bambu_region == 'cn' %}selected{% endif %}>China (CN)</option>
+            </select>
+          </div>
+        </div>
+        <p style="font-size:12px;color:var(--muted);margin-top:4px;">
+          Run <code>python scripts/get_cloud_token.py</code> to get your token.
+          See <a href="https://github.com/YOUR_USER/bambuhelper#cloud-mode-setup" target="_blank">docs</a>.
+        </p>
+      </div>
+
+      <div class="row" style="margin-top:14px;">
+        <div class="field">
+          <label>Serial Number</label>
+          <input type="text" name="printer_serial" value="{{ cfg.printer_serial }}"
+                 placeholder="01P00A123456789">
+        </div>
+        <div class="field">
+          <label>Printer Name</label>
+          <input type="text" name="printer_name" value="{{ cfg.printer_name }}" placeholder="My Printer">
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Display</h2>
+      <div class="row3">
+        <div class="field">
+          <label>Brightness (0–255)</label>
+          <input type="number" name="display_brightness" value="{{ cfg.display_brightness }}" min="0" max="255">
+        </div>
+        <div class="field">
+          <label>Rotation</label>
+          <select name="display_rotation">
+            {% for r in [0, 90, 180, 270] %}
+            <option value="{{ r }}" {% if cfg.display_rotation == r %}selected{% endif %}>{{ r }}°</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="field">
+          <label>Finish Timeout (s)</label>
+          <input type="number" name="finish_timeout_s" value="{{ cfg.finish_timeout_s }}" min="0">
+        </div>
+      </div>
+      <div class="field toggle-row" style="margin-top:8px;">
+        <input type="checkbox" name="show_clock" id="show_clock" {% if cfg.show_clock %}checked{% endif %}>
+        <label for="show_clock" style="margin:0;color:var(--text);">Show clock after print finishes</label>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Portal</h2>
+      <div class="row">
+        <div class="field">
+          <label>Portal Password</label>
+          <input type="password" name="portal_password" value="{{ cfg.portal_password }}"
+                 placeholder="Leave blank to keep existing" autocomplete="new-password">
+        </div>
+        <div class="field">
+          <label>Portal Port</label>
+          <input type="number" name="portal_port" value="{{ cfg.portal_port }}" min="1" max="65535">
+        </div>
+      </div>
+    </div>
+
+    <button type="submit" class="btn">Save &amp; Reconnect</button>
+  </form>
+
+  <footer style="margin-top:24px;">
+    BambuHelper · <a href="/health">Health</a> · <a href="/status">Status JSON</a>
+  </footer>
+
+  <script>
+    function setMode(mode) {
+      document.getElementById('connection_mode').value = mode;
+      document.querySelectorAll('.mode-tab').forEach(t => t.classList.remove('active'));
+      event.target.classList.add('active');
+      document.getElementById('lan-fields').classList.toggle('visible', mode === 'lan');
+      document.getElementById('cloud-fields').classList.toggle('visible', mode === 'cloud');
+    }
+
+    // Live status polling every 3s
+    function updateStatus() {
+      fetch('/status')
+        .then(r => r.json())
+        .then(s => {
+          const stateEl = document.getElementById('s-state');
+          const gs = s.gcode_state || (s.connected ? 'IDLE' : 'DISCONNECTED');
+          const badgeClass = {
+            'RUNNING': 'badge-running', 'PREPARE': 'badge-running',
+            'PAUSE': 'badge-pause', 'FAILED': 'badge-failed'
+          }[gs] || 'badge-idle';
+          stateEl.innerHTML = `<span class="badge ${badgeClass}">${gs}</span>`;
+          document.getElementById('s-progress').textContent =
+            s.progress != null ? s.progress + '%' : '—';
+          document.getElementById('s-nozzle').textContent =
+            s.nozzle_temp != null ? s.nozzle_temp.toFixed(1) + '°C' : '—';
+          document.getElementById('s-bed').textContent =
+            s.bed_temp != null ? s.bed_temp.toFixed(1) + '°C' : '—';
+          const layer = s.layer_num, total = s.total_layers;
+          document.getElementById('s-layer').textContent =
+            (layer && total) ? `${layer}/${total}` : '—';
+          const mins = s.remaining_minutes;
+          if (mins > 0) {
+            const h = Math.floor(mins / 60), m = mins % 60;
+            document.getElementById('s-eta').textContent = h > 0 ? `${h}h ${m}m` : `${m}m`;
+          } else {
+            document.getElementById('s-eta').textContent = '—';
+          }
+        })
+        .catch(() => {});
+    }
+    updateStatus();
+    setInterval(updateStatus, 3000);
+  </script>
+</body>
+</html>

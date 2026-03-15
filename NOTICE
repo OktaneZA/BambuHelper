@@ -1,0 +1,51 @@
+BambuHelper — Python / Raspberry Pi Port
+=========================================
+
+This project is a Python port of the original BambuHelper project
+for the Raspberry Pi Zero 2 W.
+
+Original Work
+-------------
+Project:   BambuHelper
+Author:    Keralots (https://github.com/Keralots)
+Source:    https://github.com/Keralots/BambuHelper
+Platform:  ESP32 / Arduino C++
+Display:   ST7789 240×240 via TFT_eSPI
+
+The following components were ported faithfully from the original C++ source:
+
+  display_ui.cpp      → src/display.py  (screen layout, progress bar, all screen states)
+  display_gauges.cpp  → src/display.py  (arc gauge drawing, 60°–300° sweep)
+  display_anim.cpp    → src/display.py  (spinner, animated dots, completion ring)
+  icons.h             → src/display.py  (all 16×16 and 32×32 bitmap icons)
+  bambu_mqtt.cpp      → src/bambu.py    (MQTT topics, pushall, delta-merge, backoff)
+  bambu_cloud.cpp     → src/cloud.py    (cloud region, JWT decode, user ID extraction)
+  bambu_state.h       → src/bambu.py    (all state fields and their JSON key mappings)
+
+Port Author
+-----------
+Project:   BambuHelper (Python/Pi port)
+Author:    OktaneZA (https://github.com/OktaneZA)
+Source:    https://github.com/OktaneZA/bambuhelper
+Platform:  Raspberry Pi Zero 2 W / Python 3
+Display:   Waveshare 1.54" 240×240 ST7789 LCD via Pimoroni st7789 library
+
+Additions in this port
+----------------------
+- Flask web config portal (replaces ESP32 AP-mode setup)
+- LAN + Cloud MQTT mode selectable via web UI
+- Cloud token extractor script (scripts/get_cloud_token.py)
+- Idempotent Raspberry Pi installer (install.sh)
+- systemd service with watchdog and weekly reboot timer
+- Post-install validator (validate.py)
+- Full test suite runnable without Pi hardware (pytest, mocked GPIO/SPI)
+
+Third-Party Libraries
+---------------------
+- paho-mqtt       (Eclipse Public License 2.0)  https://github.com/eclipse/paho.mqtt.python
+- Pillow          (HPND License)                https://python-pillow.org
+- Flask           (BSD-3-Clause)                https://flask.palletsprojects.com
+- RPi.GPIO        (MIT)                         https://pypi.org/project/RPi.GPIO/
+- st7789          (MIT)                         https://github.com/pimoroni/st7789-python
+- requests        (Apache-2.0)                  https://python-requests.org
+- curl_cffi       (MIT, optional)               https://github.com/yifeikong/curl_cffi

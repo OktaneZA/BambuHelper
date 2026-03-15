@@ -1,0 +1,152 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="500" viewBox="0 0 800 500">
+  <rect width="800" height="500" fill="#1a1a2e"/>
+
+  <!-- Title -->
+  <text x="400" y="32" text-anchor="middle" font-family="monospace" font-size="16" font-weight="bold" fill="#e0e0e0">BambuHelper — Wiring Diagram</text>
+  <text x="400" y="50" text-anchor="middle" font-family="monospace" font-size="11" fill="#888">Raspberry Pi Zero 2 W  ←→  Waveshare 1.54&quot; LCD (ST7789 240×240)</text>
+
+  <!-- ── Pi GPIO Header ── -->
+  <rect x="30" y="70" width="200" height="390" rx="8" fill="#1e3a1e" stroke="#3a6a3a" stroke-width="1.5"/>
+  <text x="130" y="92" text-anchor="middle" font-family="monospace" font-size="12" font-weight="bold" fill="#6dcc6d">Raspberry Pi Zero 2 W</text>
+  <text x="130" y="107" text-anchor="middle" font-family="monospace" font-size="10" fill="#4a9a4a">GPIO Header (BCM)</text>
+
+  <!-- Pi pin rows: [pin#, label, y, highlight-color] -->
+  <!-- Pin 2 - 5V (VCC) -->
+  <rect x="40" y="120" width="180" height="22" rx="3" fill="#2a1a3a" stroke="#7b3fa0" stroke-width="1"/>
+  <text x="75" y="135" text-anchor="middle" font-family="monospace" font-size="10" fill="#aaa">Pin 2</text>
+  <text x="165" y="135" text-anchor="middle" font-family="monospace" font-size="10" fill="#cc88ff">5V (VCC)</text>
+  <circle cx="225" cy="131" r="5" fill="#cc88ff"/>
+
+  <!-- Pin 6 - GND -->
+  <rect x="40" y="147" width="180" height="22" rx="3" fill="#2a2a2a" stroke="#666" stroke-width="1"/>
+  <text x="75" y="162" text-anchor="middle" font-family="monospace" font-size="10" fill="#aaa">Pin 6</text>
+  <text x="165" y="162" text-anchor="middle" font-family="monospace" font-size="10" fill="#cccccc">GND</text>
+  <circle cx="225" cy="158" r="5" fill="#aaaaaa"/>
+
+  <!-- Pin 13 - GPIO 27 RST -->
+  <rect x="40" y="174" width="180" height="22" rx="3" fill="#2a1a1a" stroke="#663333" stroke-width="1"/>
+  <text x="75" y="189" text-anchor="middle" font-family="monospace" font-size="10" fill="#aaa">Pin 13</text>
+  <text x="165" y="189" text-anchor="middle" font-family="monospace" font-size="10" fill="#ff6666">GPIO 27 (RST)</text>
+  <circle cx="225" cy="185" r="5" fill="#333333"/>
+
+  <!-- Pin 18 - GPIO 24 BL -->
+  <rect x="40" y="201" width="180" height="22" rx="3" fill="#2a1a1a" stroke="#663333" stroke-width="1"/>
+  <text x="75" y="216" text-anchor="middle" font-family="monospace" font-size="10" fill="#aaa">Pin 18</text>
+  <text x="165" y="216" text-anchor="middle" font-family="monospace" font-size="10" fill="#ff4444">GPIO 24 (BL/PWM)</text>
+  <circle cx="225" cy="212" r="5" fill="#ff3333"/>
+
+  <!-- Pin 19 - GPIO 10 MOSI -->
+  <rect x="40" y="228" width="180" height="22" rx="3" fill="#1a2a1a" stroke="#336633" stroke-width="1"/>
+  <text x="75" y="243" text-anchor="middle" font-family="monospace" font-size="10" fill="#aaa">Pin 19</text>
+  <text x="165" y="243" text-anchor="middle" font-family="monospace" font-size="10" fill="#66cc66">GPIO 10 (DIN/MOSI)</text>
+  <circle cx="225" cy="239" r="5" fill="#44bb44"/>
+
+  <!-- Pin 22 - GPIO 25 DC -->
+  <rect x="40" y="255" width="180" height="22" rx="3" fill="#1a1a2a" stroke="#333666" stroke-width="1"/>
+  <text x="75" y="270" text-anchor="middle" font-family="monospace" font-size="10" fill="#aaa">Pin 22</text>
+  <text x="165" y="270" text-anchor="middle" font-family="monospace" font-size="10" fill="#4488ff">GPIO 25 (DC)</text>
+  <circle cx="225" cy="266" r="5" fill="#2266dd"/>
+
+  <!-- Pin 23 - GPIO 11 CLK -->
+  <rect x="40" y="282" width="180" height="22" rx="3" fill="#2a2a1a" stroke="#666633" stroke-width="1"/>
+  <text x="75" y="297" text-anchor="middle" font-family="monospace" font-size="10" fill="#aaa">Pin 23</text>
+  <text x="165" y="297" text-anchor="middle" font-family="monospace" font-size="10" fill="#ffdd33">GPIO 11 (CLK/SCLK)</text>
+  <circle cx="225" cy="293" r="5" fill="#ddbb22"/>
+
+  <!-- Pin 24 - GPIO 8 CS -->
+  <rect x="40" y="309" width="180" height="22" rx="3" fill="#2a1a1a" stroke="#663a1a" stroke-width="1"/>
+  <text x="75" y="324" text-anchor="middle" font-family="monospace" font-size="10" fill="#aaa">Pin 24</text>
+  <text x="165" y="324" text-anchor="middle" font-family="monospace" font-size="10" fill="#ff9944">GPIO 8 (CS/CE0)</text>
+  <circle cx="225" cy="320" r="5" fill="#ee8822"/>
+
+  <!-- ── Display Module ── -->
+  <rect x="570" y="70" width="200" height="390" rx="8" fill="#1a1a3a" stroke="#3a3a7a" stroke-width="1.5"/>
+  <text x="670" y="92" text-anchor="middle" font-family="monospace" font-size="12" font-weight="bold" fill="#6d6dcc">Waveshare 1.54&quot; LCD</text>
+  <text x="670" y="107" text-anchor="middle" font-family="monospace" font-size="10" fill="#4a4a9a">ST7789 · 240×240 · SPI</text>
+
+  <!-- Display pins -->
+  <!-- VCC -->
+  <rect x="580" y="120" width="180" height="22" rx="3" fill="#2a1a3a" stroke="#7b3fa0" stroke-width="1"/>
+  <circle cx="575" cy="131" r="5" fill="#cc88ff"/>
+  <text x="625" y="135" text-anchor="middle" font-family="monospace" font-size="10" fill="#cc88ff">VCC</text>
+  <text x="715" y="135" text-anchor="middle" font-family="monospace" font-size="10" fill="#aaa">3.3V / 5V</text>
+
+  <!-- GND -->
+  <rect x="580" y="147" width="180" height="22" rx="3" fill="#2a2a2a" stroke="#666" stroke-width="1"/>
+  <circle cx="575" cy="158" r="5" fill="#aaaaaa"/>
+  <text x="625" y="162" text-anchor="middle" font-family="monospace" font-size="10" fill="#cccccc">GND</text>
+  <text x="715" y="162" text-anchor="middle" font-family="monospace" font-size="10" fill="#aaa">Ground</text>
+
+  <!-- DIN -->
+  <rect x="580" y="174" width="180" height="22" rx="3" fill="#1a2a1a" stroke="#336633" stroke-width="1"/>
+  <circle cx="575" cy="185" r="5" fill="#44bb44"/>
+  <text x="625" y="189" text-anchor="middle" font-family="monospace" font-size="10" fill="#66cc66">DIN</text>
+  <text x="715" y="189" text-anchor="middle" font-family="monospace" font-size="10" fill="#aaa">SPI Data In</text>
+
+  <!-- CLK -->
+  <rect x="580" y="201" width="180" height="22" rx="3" fill="#2a2a1a" stroke="#666633" stroke-width="1"/>
+  <circle cx="575" cy="212" r="5" fill="#ddbb22"/>
+  <text x="625" y="216" text-anchor="middle" font-family="monospace" font-size="10" fill="#ffdd33">CLK</text>
+  <text x="715" y="216" text-anchor="middle" font-family="monospace" font-size="10" fill="#aaa">SPI Clock</text>
+
+  <!-- CS -->
+  <rect x="580" y="228" width="180" height="22" rx="3" fill="#2a1a1a" stroke="#663a1a" stroke-width="1"/>
+  <circle cx="575" cy="239" r="5" fill="#ee8822"/>
+  <text x="625" y="243" text-anchor="middle" font-family="monospace" font-size="10" fill="#ff9944">CS</text>
+  <text x="715" y="243" text-anchor="middle" font-family="monospace" font-size="10" fill="#aaa">Chip Select</text>
+
+  <!-- DC -->
+  <rect x="580" y="255" width="180" height="22" rx="3" fill="#1a1a2a" stroke="#333666" stroke-width="1"/>
+  <circle cx="575" cy="266" r="5" fill="#2266dd"/>
+  <text x="625" y="270" text-anchor="middle" font-family="monospace" font-size="10" fill="#4488ff">DC</text>
+  <text x="715" y="270" text-anchor="middle" font-family="monospace" font-size="10" fill="#aaa">Data / Command</text>
+
+  <!-- RST -->
+  <rect x="580" y="282" width="180" height="22" rx="3" fill="#2a1a1a" stroke="#663333" stroke-width="1"/>
+  <circle cx="575" cy="293" r="5" fill="#333333"/>
+  <text x="625" y="297" text-anchor="middle" font-family="monospace" font-size="10" fill="#ff6666">RST</text>
+  <text x="715" y="297" text-anchor="middle" font-family="monospace" font-size="10" fill="#aaa">Reset</text>
+
+  <!-- BL -->
+  <rect x="580" y="309" width="180" height="22" rx="3" fill="#2a1a1a" stroke="#663333" stroke-width="1"/>
+  <circle cx="575" cy="320" r="5" fill="#ff3333"/>
+  <text x="625" y="324" text-anchor="middle" font-family="monospace" font-size="10" fill="#ff4444">BL</text>
+  <text x="715" y="324" text-anchor="middle" font-family="monospace" font-size="10" fill="#aaa">Backlight (PWM)</text>
+
+  <!-- ── Wires ── -->
+  <!-- VCC: Pi Pin2 → Display VCC (purple) -->
+  <path d="M 225,131 C 300,131 290,131 375,131 C 460,131 450,131 575,131" fill="none" stroke="#cc88ff" stroke-width="2"/>
+  <!-- GND: Pi Pin6 → Display GND (gray) -->
+  <path d="M 225,158 C 310,158 300,158 390,158 C 480,158 470,158 575,158" fill="none" stroke="#aaaaaa" stroke-width="2"/>
+  <!-- DIN: Pi Pin19 → Display DIN (green) -->
+  <path d="M 225,239 C 310,239 300,175 390,178 C 470,181 465,183 575,185" fill="none" stroke="#44bb44" stroke-width="2"/>
+  <!-- CLK: Pi Pin23 → Display CLK (yellow) -->
+  <path d="M 225,293 C 310,293 305,205 395,208 C 480,211 470,210 575,212" fill="none" stroke="#ddbb22" stroke-width="2"/>
+  <!-- CS: Pi Pin24 → Display CS (orange) -->
+  <path d="M 225,320 C 320,320 310,232 400,235 C 490,238 480,237 575,239" fill="none" stroke="#ee8822" stroke-width="2"/>
+  <!-- DC: Pi Pin22 → Display DC (blue) -->
+  <path d="M 225,266 C 310,266 305,262 395,264 C 480,266 470,265 575,266" fill="none" stroke="#2266dd" stroke-width="2"/>
+  <!-- RST: Pi Pin13 → Display RST (black/dark) -->
+  <path d="M 225,185 C 320,185 310,288 400,291 C 480,294 470,292 575,293" fill="none" stroke="#666666" stroke-width="2"/>
+  <!-- BL: Pi Pin18 → Display BL (red) -->
+  <path d="M 225,212 C 325,212 315,316 405,318 C 490,320 480,319 575,320" fill="none" stroke="#ff3333" stroke-width="2"/>
+
+  <!-- ── Legend ── -->
+  <rect x="240" y="380" width="320" height="72" rx="6" fill="#111122" stroke="#333355" stroke-width="1"/>
+  <text x="400" y="397" text-anchor="middle" font-family="monospace" font-size="10" font-weight="bold" fill="#888">Wire Colours</text>
+
+  <circle cx="260" cy="410" r="4" fill="#cc88ff"/><text x="270" y="414" font-family="monospace" font-size="9" fill="#cc88ff">VCC</text>
+  <circle cx="310" cy="410" r="4" fill="#aaaaaa"/><text x="320" y="414" font-family="monospace" font-size="9" fill="#aaaaaa">GND</text>
+  <circle cx="360" cy="410" r="4" fill="#44bb44"/><text x="370" y="414" font-family="monospace" font-size="9" fill="#44bb44">DIN</text>
+  <circle cx="410" cy="410" r="4" fill="#ddbb22"/><text x="420" y="414" font-family="monospace" font-size="9" fill="#ddbb22">CLK</text>
+  <circle cx="470" cy="410" r="4" fill="#ee8822"/><text x="480" y="414" font-family="monospace" font-size="9" fill="#ee8822">CS</text>
+  <circle cx="515" cy="410" r="4" fill="#2266dd"/><text x="525" y="414" font-family="monospace" font-size="9" fill="#4488ff">DC</text>
+
+  <circle cx="260" cy="432" r="4" fill="#666666"/><text x="270" y="436" font-family="monospace" font-size="9" fill="#aaaaaa">RST</text>
+  <circle cx="310" cy="432" r="4" fill="#ff3333"/><text x="320" y="436" font-family="monospace" font-size="9" fill="#ff4444">BL (PWM)</text>
+  <text x="450" y="436" font-family="monospace" font-size="9" fill="#555">SPI0 · 40 MHz · BCM numbering</text>
+
+  <!-- ── Note ── -->
+  <text x="400" y="476" text-anchor="middle" font-family="monospace" font-size="9" fill="#555">RST wire shown dark grey to match reference; use any colour in practice</text>
+</svg>

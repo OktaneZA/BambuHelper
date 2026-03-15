@@ -1,0 +1,7 @@
+# Development-only dependencies (tests, no Pi hardware needed)
+pillow>=10.3.0
+flask>=3.0
+paho-mqtt>=1.6
+requests>=2.31
+pytest>=8.0
+pytest-mock>=3.12

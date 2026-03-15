@@ -1,0 +1,19 @@
+[Unit]
+Description=BambuHelper Printer Display
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=bambu-helper
+Group=bambu-helper
+Environment=BAMBU_CONFIG=/etc/bambu-helper/config.json
+ExecStart=/opt/bambu-helper/.venv/bin/python /opt/bambu-helper/src/main.py
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=bambu-helper
+
+[Install]
+WantedBy=multi-user.target
