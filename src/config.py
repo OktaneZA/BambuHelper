@@ -5,10 +5,13 @@ BAMBU_CONFIG env var). All fields have defaults; missing keys are filled
 automatically on load. (CFG-01, CFG-03, CFG-04, CFG-05)
 """
 
+import base64
+import hashlib
 import json
 import logging
 import os
 import re
+import secrets
 import stat
 import tempfile
 from typing import Any
@@ -31,7 +34,7 @@ DEFAULTS: dict[str, Any] = {
     "display_rotation": 0,              # 0 | 90 | 180 | 270
     "finish_timeout_s": 300,            # seconds → SCREEN_CLOCK
     "show_clock": True,
-    "portal_password": "admin",         # SEC-04: basic auth password
+    "portal_password": "",              # SEC-04/SEC-08: empty = local-only mode; set to PBKDF2 hash for remote access
     "portal_port": 8080,
 }
 
@@ -40,6 +43,57 @@ _IP_RE = re.compile(
 )
 _SERIAL_RE = re.compile(r"^[0-9A-Z]{15,20}$")
 _ACCESS_CODE_RE = re.compile(r"^[A-Za-z0-9]{8,}$")
+
+
+def hash_password(plaintext: str) -> str:
+    """Hash *plaintext* with PBKDF2-HMAC-SHA256 and a random 16-byte salt. (SEC-08)
+
+    Returns a string of the form:
+        ``pbkdf2:sha256:260000:<salt_hex>:<base64_hash>``
+
+    Uses only Python stdlib (hashlib, secrets, base64). Never logs input value. (SEC-01)
+    """
+    salt = secrets.token_hex(16)
+    dk = hashlib.pbkdf2_hmac(
+        "sha256",
+        plaintext.encode("utf-8"),
+        bytes.fromhex(salt),
+        260_000,
+    )
+    return f"pbkdf2:sha256:260000:{salt}:{base64.b64encode(dk).decode('ascii')}"
+
+
+def verify_password(plaintext: str, stored: str) -> bool:
+    """Return True if *plaintext* matches *stored* password hash. (SEC-08)
+
+    Handles two cases:
+    - Modern: ``stored`` starts with ``pbkdf2:sha256:`` — constant-time PBKDF2 compare.
+    - Legacy: ``stored`` has no ``pbkdf2:`` prefix — plaintext compare for migration
+      from old installs that stored passwords in plain text.
+
+    Never logs either argument. (SEC-01)
+    """
+    if not stored:
+        return False
+    if not stored.startswith("pbkdf2:"):
+        # Legacy plaintext migration path
+        return secrets.compare_digest(plaintext, stored)
+    try:
+        _, method, iterations_str, salt_hex, hash_b64 = stored.split(":")
+        if method != "sha256":
+            logger.warning("verify_password: unsupported hash method %r", method)
+            return False
+        dk_stored = base64.b64decode(hash_b64)
+        dk_attempt = hashlib.pbkdf2_hmac(
+            method,
+            plaintext.encode("utf-8"),
+            bytes.fromhex(salt_hex),
+            int(iterations_str),
+        )
+        return secrets.compare_digest(dk_attempt, dk_stored)
+    except Exception:  # noqa: BLE001 — malformed hash must not crash
+        logger.warning("verify_password: malformed stored hash (not logging value)")
+        return False
 
 
 def _check_file_permissions(path: str) -> None:

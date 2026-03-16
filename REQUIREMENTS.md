@@ -54,17 +54,18 @@
 | SEC-01 | `printer_access_code` and `bambu_token` must **never** appear in log output, tracebacks, or error messages |
 | SEC-02 | Config file permissions `640` (root:bambu-helper); never world-readable |
 | SEC-03 | Service runs as non-root system user `bambu-helper` |
-| SEC-04 | Web portal HTTP basic auth always enabled; no opt-out |
+| SEC-04 | Web portal auth depends on whether `portal_password` is set. Empty password: requests from `127.0.0.1` or `::1` are allowed without credentials; all other origins receive HTTP 403. Non-empty password: HTTP Basic Auth is required from all origins; incorrect credentials return HTTP 401 with `WWW-Authenticate`. |
 | SEC-05 | Cloud MQTT uses system CA verification (`tls_set()` default); LAN uses `tls_insecure_set(True)` only because printer uses self-signed cert |
 | SEC-06 | No `eval()`, `exec()`, `os.system()`, or `subprocess` with config-derived strings |
 | SEC-07 | All outbound HTTPS calls use `verify=True` |
+| SEC-08 | Portal password stored as `pbkdf2:sha256:260000:<salt_hex>:<base64_hash>`; `hash_password()` uses `hashlib.pbkdf2_hmac` + `secrets.token_hex` (stdlib only, no new dependencies). `verify_password()` detects legacy plaintext (no `pbkdf2:` prefix) and accepts it during migration. |
 
 ## Configuration
 
 | ID | Requirement |
 |----|-------------|
 | CFG-01 | Config stored as JSON at `/etc/bambu-helper/config.json` |
-| CFG-02 | Web portal on port 8080 (configurable) reads/writes config and triggers MQTT reconnect |
+| CFG-02 | Web portal port is randomly selected from the range 4001–65000 at install time (no collision guaranteed); the chosen port is written to config.json and shown in the install summary. `DEFAULTS` retains 8080 as a fallback only when the key is absent from the file. |
 | CFG-03 | All config fields have documented defaults; missing fields filled from defaults on load |
 | CFG-04 | Config validated at load time; invalid config raises `ValueError` with actionable message |
 | CFG-05 | Config writes are atomic: write to `.tmp`, then `os.replace()` |

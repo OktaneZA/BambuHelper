@@ -166,9 +166,49 @@ read -r -p "Printer name (display label) [My Printer]: " PRINTER_NAME
 PRINTER_NAME="${PRINTER_NAME:-My Printer}"
 
 echo ""
-read -r -s -p "Web portal password [admin]: " PORTAL_PASSWORD
+read -r -s -p "Web portal password (leave blank for localhost-only access): " PORTAL_PASSWORD
 echo ""
-PORTAL_PASSWORD="${PORTAL_PASSWORD:-admin}"
+# No default — empty string means local-only mode (SEC-04)
+
+# ------------------------------------------------------------------ #
+# Find a free port above 4000 (CFG-02)                                #
+# ------------------------------------------------------------------ #
+
+step "Finding free port for web portal"
+
+PORTAL_PORT=$(python3 - <<'PYEOF'
+import socket, random, sys
+for _ in range(100):
+    port = random.randint(4001, 65000)
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.bind(("", port))
+            print(port)
+            sys.exit(0)
+    except OSError:
+        pass
+sys.exit(1)
+PYEOF
+)
+info "Selected portal port: ${PORTAL_PORT}"
+
+# ------------------------------------------------------------------ #
+# Hash the portal password (SEC-08)                                   #
+# ------------------------------------------------------------------ #
+
+if [[ -n "${PORTAL_PASSWORD}" ]]; then
+    # Pass password via stdin to avoid exposure in /proc/cmdline (HIGH-1)
+    PORTAL_PASSWORD_HASH=$(printf '%s' "${PORTAL_PASSWORD}" | python3 -c "
+import hashlib, secrets, base64, sys
+pw = sys.stdin.read()
+salt = secrets.token_hex(16)
+dk = hashlib.pbkdf2_hmac('sha256', pw.encode(), bytes.fromhex(salt), 260000)
+print(f'pbkdf2:sha256:260000:{salt}:{base64.b64encode(dk).decode()}')
+")
+else
+    PORTAL_PASSWORD_HASH=""
+    info "No password set — portal will be accessible from localhost only (SEC-04)"
+fi
 
 # ------------------------------------------------------------------ #
 # Write config file (SEC-02: 640 permissions)                          #
@@ -191,8 +231,8 @@ cat > "${CONFIG_FILE}" <<JSONEOF
   "display_rotation": 0,
   "finish_timeout_s": 300,
   "show_clock": true,
-  "portal_password": "${PORTAL_PASSWORD}",
-  "portal_port": 8080
+  "portal_password": "${PORTAL_PASSWORD_HASH}",
+  "portal_port": ${PORTAL_PORT}
 }
 JSONEOF
 
@@ -246,8 +286,13 @@ echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━
 echo -e "${GREEN}  BambuHelper installed successfully!${NC}"
 echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
-echo -e "  Web portal:  ${CYAN}http://$(hostname).local:8080${NC}"
-echo -e "  Credentials: ${CYAN}admin / ${PORTAL_PASSWORD}${NC}"
+PORTAL_IP=$(hostname -I | awk '{print $1}')
+echo -e "  Web portal:  ${CYAN}http://${PORTAL_IP}:${PORTAL_PORT}${NC}"
+if [[ -n "${PORTAL_PASSWORD}" ]]; then
+    echo -e "  Credentials: ${CYAN}admin / <password set during install>${NC}  (stored as PBKDF2 hash)"
+else
+    echo -e "  Access:      ${CYAN}Localhost only (no password set — use SSH tunnel for remote access)${NC}"
+fi
 echo ""
 echo -e "  Logs:        ${CYAN}journalctl -u bambu-helper -f${NC}"
 echo -e "  Update:      ${CYAN}sudo bash ${INSTALL_DIR}/update.sh${NC}"

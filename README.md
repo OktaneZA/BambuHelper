@@ -56,13 +56,25 @@ sudo bash bambuhelper/install.sh
 
 ## Configuration
 
-After installation, open the web portal in your browser:
+After installation, open the web portal in your browser. The port is randomly
+assigned during install from the range 4001–65000 — the exact URL is shown at
+the end of the install output:
 
 ```
-http://<pi-hostname>.local:8080
+http://<pi-ip>:<port>
 ```
 
-Default credentials: **admin / admin** — change `portal_password` after first login.
+The installer prompts for a portal password:
+
+- **Leave blank** — portal is accessible from **localhost only** (`127.0.0.1` / `::1`).
+  Useful when you access the Pi via SSH tunnel (`ssh -L 8080:localhost:<port> pi@<pi-ip>`).
+  All remote access is blocked with HTTP 403.
+- **Set a password** — HTTP Basic Auth is required from all clients (username: `admin`).
+  The password is stored as a PBKDF2-HMAC-SHA256 hash in the config file; it is never
+  stored in plaintext.
+
+To change the password after install, use the web portal form — the new value is
+hashed automatically on save.
 
 ---
 

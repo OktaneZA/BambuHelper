@@ -1,9 +1,13 @@
 """Flask web config portal for BambuHelper.
 
-Serves a dark-themed configuration page on port 8080 (configurable).
-Basic auth is always enabled — no opt-out (SEC-04).
+Serves a dark-themed configuration page on a configurable port.
+Auth behaviour follows SEC-04/SEC-08:
+  - Empty portal_password: localhost (127.0.0.1 / ::1) allowed without credentials,
+    all other origins receive HTTP 403.
+  - Non-empty portal_password: HTTP Basic Auth required from all origins; password
+    verified via PBKDF2-HMAC-SHA256 hash (verify_password from config module).
 
-Sensitive fields (access_code, token) are masked in the UI and only
+Sensitive fields (access_code, token, password) are masked in the UI and only
 replaced if the user enters a new value. (SEC-01)
 """
 
@@ -55,14 +59,27 @@ def create_app(
     def require_auth(f):  # type: ignore[no-untyped-def]
         @functools.wraps(f)
         def decorated(*args, **kwargs):  # type: ignore[no-untyped-def]
-            auth = request.authorization
             try:
                 current_cfg = cfg_module.load_config(config_path)
-                portal_password = current_cfg.get("portal_password", "admin")
-            except Exception:  # noqa: BLE001
-                portal_password = "admin"
+                portal_password = current_cfg.get("portal_password", "")
+            except Exception as exc:  # noqa: BLE001
+                logger.error("require_auth: failed to load config — blocking remote access: %s", exc)
+                portal_password = ""
 
-            if not auth or auth.username != "admin" or auth.password != portal_password:
+            if not portal_password:
+                # SEC-04: no password set — local access only
+                if request.remote_addr in ("127.0.0.1", "::1"):
+                    return f(*args, **kwargs)
+                return Response(
+                    "Remote access requires a password to be configured.",
+                    403,
+                )
+
+            # Password is set — require HTTP Basic Auth (SEC-04)
+            auth = request.authorization
+            if not auth or auth.username != "admin" or not cfg_module.verify_password(
+                auth.password or "", portal_password
+            ):
                 return Response(
                     "Authentication required",
                     401,
@@ -119,10 +136,15 @@ def create_app(
         new_cfg["portal_port"] = int(form.get("portal_port", 8080))
 
         # Only update sensitive fields if user entered a new value (not the mask)
-        for key in ("printer_access_code", "bambu_token", "portal_password"):
+        for key in ("printer_access_code", "bambu_token"):
             val = form.get(key, "").strip()
             if val and val != _MASK:
                 new_cfg[key] = val  # never log these values (SEC-01)
+
+        # Portal password: hash before storing (SEC-08)
+        new_pw = form.get("portal_password", "").strip()
+        if new_pw and new_pw != _MASK:
+            new_cfg["portal_password"] = cfg_module.hash_password(new_pw)  # SEC-01: never log
 
         errors = cfg_module.validate_config(new_cfg)
         if errors:

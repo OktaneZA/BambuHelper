@@ -209,3 +209,54 @@ class TestSaveConfig:
         cfg_module.save_config(original, path)
         loaded = cfg_module.load_config(path)
         assert loaded["printer_name"] == "Roundtrip Test"
+
+
+# ------------------------------------------------------------------ #
+# hash_password / verify_password (SEC-08)                            #
+# ------------------------------------------------------------------ #
+
+class TestPasswordHashing:
+    def test_hash_returns_pbkdf2_prefix(self):
+        h = cfg_module.hash_password("mypassword")
+        assert h.startswith("pbkdf2:sha256:260000:")
+
+    def test_hash_has_five_colon_separated_parts(self):
+        h = cfg_module.hash_password("mypassword")
+        parts = h.split(":")
+        assert len(parts) == 5
+
+    def test_hash_round_trip_correct_password(self):
+        h = cfg_module.hash_password("correct-horse")
+        assert cfg_module.verify_password("correct-horse", h) is True
+
+    def test_hash_round_trip_wrong_password(self):
+        h = cfg_module.hash_password("correct-horse")
+        assert cfg_module.verify_password("wrong-horse", h) is False
+
+    def test_two_hashes_of_same_password_differ(self):
+        """Different salts must produce different hashes."""
+        h1 = cfg_module.hash_password("same")
+        h2 = cfg_module.hash_password("same")
+        assert h1 != h2
+        assert cfg_module.verify_password("same", h1) is True
+        assert cfg_module.verify_password("same", h2) is True
+
+    def test_verify_legacy_plaintext_migration(self):
+        """Old installs stored 'admin' as plaintext — must still verify (SEC-08)."""
+        assert cfg_module.verify_password("admin", "admin") is True
+
+    def test_verify_legacy_wrong_password(self):
+        assert cfg_module.verify_password("wrong", "admin") is False
+
+    def test_verify_empty_stored_returns_false(self):
+        """Empty stored string means 'no password set' — never authenticates."""
+        assert cfg_module.verify_password("anything", "") is False
+
+    def test_verify_malformed_hash_returns_false(self):
+        assert cfg_module.verify_password("pw", "pbkdf2:sha256:NOTANINT:abc:def") is False
+
+    def test_hash_empty_password(self):
+        """Empty string can be hashed and verified without error."""
+        h = cfg_module.hash_password("")
+        assert cfg_module.verify_password("", h) is True
+        assert cfg_module.verify_password("notempty", h) is False
