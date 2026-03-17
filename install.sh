@@ -157,8 +157,8 @@ if [[ "$MODE_CHOICE" == "2" ]]; then
     read -r -p "Bambu Cloud region (us/eu/cn) [us]: " REGION </dev/tty || true
     REGION="${REGION:-us}"
     echo ""
-    echo "  Cloud token: log in to bambulab.com → F12 → Application → Local Storage"
-    echo "  → https://bambulab.com → find key 'token' or 'tfToken' → copy the eyJ... value."
+    echo "  Cloud token: log in to bambulab.com → F12 → Application → Cookies"
+    echo "  → https://bambulab.com → find the cookie named 'token' → copy the eyJ... value."
     read -r -s -p "Paste your cloud token: " BAMBU_TOKEN </dev/tty || true
     echo ""
     PRINTER_IP=""
