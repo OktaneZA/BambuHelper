@@ -45,13 +45,6 @@ A Python port of [BambuHelper](https://github.com/Keralots/BambuHelper) for the 
 curl -fsSL https://raw.githubusercontent.com/OktaneZA/bambuhelper/master/install.sh | sudo bash
 ```
 
-Or after cloning:
-
-```bash
-git clone https://github.com/OktaneZA/bambuhelper.git
-sudo bash bambuhelper/install.sh
-```
-
 ---
 
 ## Configuration
@@ -83,9 +76,9 @@ hashed automatically on save.
 LAN mode connects directly to your printer over your local network. No internet required after initial setup.
 
 **What you need:**
-1. **Printer IP address** — found in the printer's touchscreen under *Network* settings, or in your router's DHCP list. Tip: assign a static IP to avoid changes.
-2. **Access code** — shown on the printer touchscreen under *Network → Access Code* (8 characters, e.g. `12345678`).
-3. **Serial number** — shown on the touchscreen under *About* or on the label underneath the printer (format: `01P00A123456789`).
+1. **Printer IP address** — found in the printer's touchscreen under *Network* settings, or in your router's DHCP list. Tip: assign a static IP to avoid it changing.
+2. **Access code** — on the printer touchscreen go to **Settings → LAN Only Mode**. The 8-character access code is displayed there (e.g. `12345678`).
+3. **Serial number** — not shown in the printer's own touchscreen menus. To find it: open **Bambu Studio** on your PC, go to the **Device** tab, select your printer, and click the **firmware/update** button — the serial number (e.g. `01P00C123456789`) is shown in that dialog.
 
 **In the web portal:**
 1. Set *Connection Mode* → **LAN**

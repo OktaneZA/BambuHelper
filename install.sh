@@ -169,11 +169,15 @@ else
     echo ""
     read -r -p "Printer IP address: " PRINTER_IP </dev/tty || true
     echo ""
-    read -r -s -p "Access code (from printer touchscreen → Network): " PRINTER_ACCESS_CODE </dev/tty || true
+    echo "  Access code: on the printer touchscreen go to Settings → LAN Only Mode."
+    echo "  The 8-character access code is shown there."
+    read -r -s -p "Access code: " PRINTER_ACCESS_CODE </dev/tty || true
     echo ""
 fi
 
 echo ""
+echo "Serial number: open Bambu Studio on your PC → go to your Device tab → click"
+echo "the update/firmware button. The serial number (e.g. 01P00C...) is shown there."
 read -r -p "Printer serial number: " PRINTER_SERIAL </dev/tty || true
 read -r -p "Printer name (display label) [My Printer]: " PRINTER_NAME </dev/tty || true
 PRINTER_NAME="${PRINTER_NAME:-My Printer}"
