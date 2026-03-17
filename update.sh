@@ -30,6 +30,13 @@ if [[ -d "${VENV_TMP}/.venv" ]]; then
 fi
 rm -rf "${VENV_TMP}"
 
+echo "[INFO] Restoring fonts …"
+mkdir -p "${INSTALL_DIR}/src/fonts"
+[[ -f /usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf ]] && \
+    cp /usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf "${INSTALL_DIR}/src/fonts/RobotoMono-Regular.ttf"
+[[ -f /usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf ]] && \
+    cp /usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf "${INSTALL_DIR}/src/fonts/RobotoMono-Bold.ttf"
+
 echo "[INFO] Updating dependencies …"
 "${VENV_DIR}/bin/pip" install --quiet --prefer-binary --upgrade -r "${INSTALL_DIR}/requirements.txt"
 

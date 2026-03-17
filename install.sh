@@ -102,6 +102,21 @@ python3 -m venv "${INSTALL_DIR}/.venv"
 "${INSTALL_DIR}/.venv/bin/pip" install --quiet --prefer-binary -r "${INSTALL_DIR}/requirements.txt"
 info "Dependencies installed"
 
+step "Copying fonts"
+mkdir -p "${INSTALL_DIR}/src/fonts"
+for FONT_SRC in \
+    "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf:RobotoMono-Regular.ttf" \
+    "/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf:RobotoMono-Bold.ttf"; do
+    SRC="${FONT_SRC%%:*}"
+    DST="${FONT_SRC##*:}"
+    if [[ -f "$SRC" ]]; then
+        cp "$SRC" "${INSTALL_DIR}/src/fonts/${DST}"
+        info "  Copied $(basename "$SRC") → $DST"
+    else
+        warn "  Font not found: $SRC (display will use fallback)"
+    fi
+done
+
 # ------------------------------------------------------------------ #
 # INST-04: Create system user                                          #
 # ------------------------------------------------------------------ #
