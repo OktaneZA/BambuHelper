@@ -52,7 +52,8 @@ info "Raspberry Pi detected: $(tr -d '\0' < /proc/device-tree/model)"
 step "Installing system packages"
 
 apt-get update -qq
-for pkg in python3 python3-venv python3-pip python3-spidev python3-rpi.gpio git; do
+for pkg in python3 python3-venv python3-pip python3-spidev python3-rpi.gpio git \
+           libjpeg-dev zlib1g-dev libfreetype6-dev libopenjp2-7; do
     if dpkg -s "$pkg" &>/dev/null; then
         info "  $pkg already installed"
     else
@@ -98,7 +99,7 @@ step "Setting up Python virtual environment"
 
 python3 -m venv "${INSTALL_DIR}/.venv"
 "${INSTALL_DIR}/.venv/bin/pip" install --quiet --upgrade pip
-"${INSTALL_DIR}/.venv/bin/pip" install --quiet -r "${INSTALL_DIR}/requirements.txt"
+"${INSTALL_DIR}/.venv/bin/pip" install --quiet --prefer-binary -r "${INSTALL_DIR}/requirements.txt"
 info "Dependencies installed"
 
 # ------------------------------------------------------------------ #
