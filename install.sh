@@ -169,8 +169,9 @@ else
     echo ""
     read -r -p "Printer IP address: " PRINTER_IP </dev/tty || true
     echo ""
-    echo "  Access code: on the printer touchscreen go to Settings → LAN Only Mode."
-    echo "  The 8-character access code is shown there."
+    echo "  Access code: on the printer touchscreen go to Settings → LAN Only Mode,"
+    echo "  toggle it ON, and the 8-character access code will be shown."
+    echo "  You can turn LAN Only Mode back off after noting the code."
     read -r -s -p "Access code: " PRINTER_ACCESS_CODE </dev/tty || true
     echo ""
 fi

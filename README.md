@@ -77,7 +77,7 @@ LAN mode connects directly to your printer over your local network. No internet 
 
 **What you need:**
 1. **Printer IP address** — found in the printer's touchscreen under *Network* settings, or in your router's DHCP list. Tip: assign a static IP to avoid it changing.
-2. **Access code** — on the printer touchscreen go to **Settings → LAN Only Mode**. The 8-character access code is displayed there (e.g. `12345678`).
+2. **Access code** — on the printer touchscreen go to **Settings → LAN Only Mode**, toggle it **on**, and the 8-character access code will be displayed (e.g. `12345678`). You can turn LAN Only Mode back off after noting the code — the access code stays the same.
 3. **Serial number** — not shown in the printer's own touchscreen menus. To find it: open **Bambu Studio** on your PC, go to the **Device** tab, select your printer, and click the **firmware/update** button — the serial number (e.g. `01P00C123456789`) is shown in that dialog.
 
 **In the web portal:**
