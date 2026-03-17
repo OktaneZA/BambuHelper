@@ -103,26 +103,28 @@ Cloud mode connects via Bambu Lab's MQTT cloud service. Useful if the Pi is on a
 
 ### Getting Your Cloud Token
 
-**Option A — Python helper script (recommended):**
+**Option A — Browser Local Storage (easiest):**
+
+1. Go to **[bambulab.com](https://bambulab.com)** and log in
+2. Press **F12** to open DevTools → click the **Application** tab
+3. In the left panel expand **Local Storage** → click `https://bambulab.com`
+4. Find the key named `token` or `tfToken` — the value is your `eyJ...` JWT
+5. Copy the full value
+
+**Option B — Browser Network tab:**
+
+1. Go to **[bambulab.com](https://bambulab.com)** and log in (or refresh while already logged in)
+2. Press **F12** → **Network** tab
+3. Filter requests by `api.bambulab.com`
+4. Click any request → **Headers** → find `Authorization: Bearer eyJ...`
+5. Copy everything after `Bearer `
+
+**Option C — Python helper script:**
 
 ```bash
-# Install the helper dependency
 pip install curl_cffi
-
-# Run the token extractor
 python scripts/get_cloud_token.py
 ```
-
-Follow the prompts — it will open a browser session, log in, handle 2FA, and print your token.
-
-**Option B — Browser DevTools:**
-
-1. Open [Bambu Lab Studio](https://bambulab.com) in Chrome
-2. Press **F12** → *Network* tab
-3. Log in to your account
-4. Filter requests for `api.bambulab.com`
-5. Look for any request with an `Authorization: Bearer eyJ...` header
-6. Copy the token (the part after `Bearer `)
 
 ### Configuring Cloud Mode in the Portal
 
