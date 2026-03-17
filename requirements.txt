@@ -1,6 +1,6 @@
 # BambuHelper runtime dependencies — pinned for reproducibility on Pi Zero 2 W
 paho-mqtt==1.6.1
-pillow==10.3.0
+pillow>=11.0.0
 flask==3.0.3
 RPi.GPIO==0.7.1
 requests==2.31.0
