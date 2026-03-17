@@ -32,9 +32,10 @@ REGIONS = {
     "2": ("cn", "https://api.bambulab.cn"),
 }
 
-LOGIN_PATH = "/v1/user-service/user/login"
-TOTP_PATH = "/v1/user-service/user/login/tfa/mfa"
-EMAIL_PATH = "/v1/user-service/user/login/tfa/email/code"
+LOGIN_PATH    = "/v1/user-service/user/login"
+TOTP_PATH     = "/v1/user-service/user/login/tfa/mfa"
+EMAIL_SEND    = "/v1/user-service/user/login/tfa/email"
+EMAIL_PATH    = "/v1/user-service/user/login/tfa/email/code"
 
 # Headers that mimic OrcaSlicer (same as bambu_cloud.cpp)
 _HEADERS = {
@@ -80,8 +81,30 @@ def main() -> None:
         print(f"\nLogin request failed: {exc}")
         sys.exit(1)
 
-    # Handle 2FA
-    if resp.get("loginType") in ("tfa", "mfa"):
+    # Handle 2FA — check for tfaKey flow first (email verification via key)
+    tfa_key = resp.get("tfaKey")
+    login_type = resp.get("loginType")
+
+    if tfa_key and not resp.get("accessToken"):
+        # Bambu sent a tfaKey — request email code then verify
+        print("\nEmail verification required (tfaKey flow).")
+        try:
+            _post(session, api_base + EMAIL_SEND, {"tfaKey": tfa_key})
+        except Exception as exc:
+            print(f"\nFailed to send verification email: {exc}")
+            sys.exit(1)
+        print("Check your email for a verification code.")
+        email_code = input("Enter email code: ").strip()
+        try:
+            resp = _post(session, api_base + EMAIL_PATH, {
+                "tfaKey": tfa_key,
+                "code": email_code,
+            })
+        except Exception as exc:
+            print(f"\nEmail code request failed: {exc}")
+            sys.exit(1)
+
+    elif login_type in ("tfa", "mfa"):
         print("\n2FA required (authenticator app).")
         totp_code = input("Enter TOTP code: ").strip()
         try:
@@ -93,7 +116,7 @@ def main() -> None:
             print(f"\n2FA request failed: {exc}")
             sys.exit(1)
 
-    elif resp.get("loginType") == "email_code":
+    elif login_type == "email_code":
         print("\nEmail verification required.")
         print("Check your email for a verification code.")
         email_code = input("Enter email code: ").strip()
