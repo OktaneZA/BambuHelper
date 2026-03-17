@@ -43,7 +43,7 @@ step "Checking environment"
 if [[ ! -f /proc/device-tree/model ]] || ! grep -qi "raspberry" /proc/device-tree/model; then
     error "This installer must run on a Raspberry Pi."
 fi
-info "Raspberry Pi detected: $(cat /proc/device-tree/model)"
+info "Raspberry Pi detected: $(tr -d '\0' < /proc/device-tree/model)"
 
 # ------------------------------------------------------------------ #
 # Install prerequisites                                                #
@@ -131,21 +131,34 @@ done
 
 step "Configuring printer connection"
 
+# Pre-initialise all interactive variables so set -u never fires when
+# the script is piped via curl | bash (stdin is the pipe, not a tty).
+# All reads redirect from /dev/tty so prompts reach the user's terminal.
+MODE_CHOICE=""
+CONNECTION_MODE="lan"
+REGION="us"
+BAMBU_TOKEN=""
+PRINTER_IP=""
+PRINTER_ACCESS_CODE=""
+PRINTER_SERIAL=""
+PRINTER_NAME="My Printer"
+PORTAL_PASSWORD=""
+
 echo ""
 echo "Choose connection mode:"
 echo "  1) LAN  — direct local network connection (recommended)"
 echo "  2) Cloud — Bambu Lab cloud MQTT"
-read -r -p "Enter 1 or 2 [1]: " MODE_CHOICE
+read -r -p "Enter 1 or 2 [1]: " MODE_CHOICE </dev/tty || true
 MODE_CHOICE="${MODE_CHOICE:-1}"
 
 if [[ "$MODE_CHOICE" == "2" ]]; then
     CONNECTION_MODE="cloud"
     echo ""
-    read -r -p "Bambu Cloud region (us/eu/cn) [us]: " REGION
+    read -r -p "Bambu Cloud region (us/eu/cn) [us]: " REGION </dev/tty || true
     REGION="${REGION:-us}"
     echo ""
     warn "You need a Bambu Cloud token. Run: python scripts/get_cloud_token.py"
-    read -r -s -p "Paste your cloud token: " BAMBU_TOKEN
+    read -r -s -p "Paste your cloud token: " BAMBU_TOKEN </dev/tty || true
     echo ""
     PRINTER_IP=""
     PRINTER_ACCESS_CODE=""
@@ -154,19 +167,19 @@ else
     REGION="us"
     BAMBU_TOKEN=""
     echo ""
-    read -r -p "Printer IP address: " PRINTER_IP
+    read -r -p "Printer IP address: " PRINTER_IP </dev/tty || true
     echo ""
-    read -r -s -p "Access code (from printer touchscreen → Network): " PRINTER_ACCESS_CODE
+    read -r -s -p "Access code (from printer touchscreen → Network): " PRINTER_ACCESS_CODE </dev/tty || true
     echo ""
 fi
 
 echo ""
-read -r -p "Printer serial number: " PRINTER_SERIAL
-read -r -p "Printer name (display label) [My Printer]: " PRINTER_NAME
+read -r -p "Printer serial number: " PRINTER_SERIAL </dev/tty || true
+read -r -p "Printer name (display label) [My Printer]: " PRINTER_NAME </dev/tty || true
 PRINTER_NAME="${PRINTER_NAME:-My Printer}"
 
 echo ""
-read -r -s -p "Web portal password (leave blank for localhost-only access): " PORTAL_PASSWORD
+read -r -s -p "Web portal password (leave blank for localhost-only access): " PORTAL_PASSWORD </dev/tty || true
 echo ""
 # No default — empty string means local-only mode (SEC-04)
 
