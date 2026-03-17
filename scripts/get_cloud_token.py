@@ -19,12 +19,7 @@ Security: the token is printed ONCE to stdout only. Do not log it further.
 import json
 import sys
 
-try:
-    from curl_cffi import requests as cffi_requests
-except ImportError:
-    print("Error: curl_cffi is required.")
-    print("Install with: pip install curl_cffi")
-    sys.exit(1)
+import requests as cffi_requests
 
 # Region selection
 REGIONS = {
@@ -48,7 +43,7 @@ _HEADERS = {
 
 def _post(session, url: str, body: dict) -> dict:
     """POST JSON and return parsed response."""
-    resp = session.post(url, json=body, headers=_HEADERS, timeout=15, impersonate="chrome110")
+    resp = session.post(url, json=body, headers=_HEADERS, timeout=15)
     resp.raise_for_status()
     return resp.json()
 
@@ -70,6 +65,7 @@ def main() -> None:
     password = getpass.getpass("Password: ")
 
     session = cffi_requests.Session()
+    session.verify = True
 
     print("\nLogging in …")
     try:
