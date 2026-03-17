@@ -144,6 +144,17 @@ done
 # Interactive configuration                                            #
 # ------------------------------------------------------------------ #
 
+if [[ -f "${CONFIG_FILE}" ]]; then
+    info "Existing config found at ${CONFIG_FILE} — skipping configuration prompts."
+    info "To reconfigure, delete the file and re-run the installer:"
+    info "  sudo rm ${CONFIG_FILE} && sudo bash install.sh"
+    SKIP_CONFIG=true
+else
+    SKIP_CONFIG=false
+fi
+
+if [[ "${SKIP_CONFIG}" == "false" ]]; then
+
 step "Configuring printer connection"
 
 # Pre-initialise all interactive variables so set -u never fires when
@@ -276,6 +287,8 @@ chown "${SERVICE_USER}:${SERVICE_USER}" "${CONFIG_FILE}"
 chmod 640 "${CONFIG_FILE}"
 info "Config written with permissions 640 (${SERVICE_USER}:${SERVICE_USER})"
 
+fi # end SKIP_CONFIG
+
 # ------------------------------------------------------------------ #
 # Install systemd service (INST-05)                                    #
 # ------------------------------------------------------------------ #
@@ -323,8 +336,11 @@ echo -e "${GREEN}  BambuHelper installed successfully!${NC}"
 echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
 PORTAL_IP=$(hostname -I | awk '{print $1}')
-echo -e "  Web portal:  ${CYAN}http://${PORTAL_IP}:${PORTAL_PORT}${NC}"
-if [[ -n "${PORTAL_PASSWORD}" ]]; then
+# Read port from config in case we skipped the prompts
+DISPLAY_PORT="${PORTAL_PORT:-$(python3 -c "import json; print(json.load(open('${CONFIG_FILE}'))['portal_port'])" 2>/dev/null || echo '???')}"
+DISPLAY_PASS="${PORTAL_PASSWORD:-$(python3 -c "import json; print(json.load(open('${CONFIG_FILE}'))['portal_password'])" 2>/dev/null || echo '')}"
+echo -e "  Web portal:  ${CYAN}http://${PORTAL_IP}:${DISPLAY_PORT}${NC}"
+if [[ -n "${DISPLAY_PASS}" ]]; then
     echo -e "  Credentials: ${CYAN}admin / <password set during install>${NC}  (stored as PBKDF2 hash)"
 else
     echo -e "  Access:      ${CYAN}Localhost only (no password set — use SSH tunnel for remote access)${NC}"
