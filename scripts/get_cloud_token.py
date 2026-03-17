@@ -80,6 +80,8 @@ def main() -> None:
     # Handle 2FA — check for tfaKey flow first (email verification via key)
     tfa_key = resp.get("tfaKey")
     login_type = resp.get("loginType")
+    has_token = bool(resp.get("accessToken"))
+    print(f"[debug] loginType={login_type!r} tfaKey={'<set>' if tfa_key else None!r} hasAccessToken={has_token}")
 
     if tfa_key and not resp.get("accessToken"):
         # Bambu sent a tfaKey — request email code then verify
