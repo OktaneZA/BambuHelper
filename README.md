@@ -42,7 +42,7 @@ See [INSTALL.md](INSTALL.md) for the full wiring diagram.
 
 ```bash
 # On your Pi Zero 2 W, as root:
-curl -fsSL https://raw.githubusercontent.com/OktaneZA/bambuhelper/main/install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/OktaneZA/bambuhelper/master/install.sh | sudo bash
 ```
 
 Or after cloning:

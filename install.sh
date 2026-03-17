@@ -83,7 +83,7 @@ step "Installing BambuHelper to ${INSTALL_DIR}"
 if [[ -d "${INSTALL_DIR}/.git" ]]; then
     info "Updating existing installation …"
     git -C "${INSTALL_DIR}" fetch --quiet
-    git -C "${INSTALL_DIR}" reset --hard origin/main --quiet
+    git -C "${INSTALL_DIR}" reset --hard origin/master --quiet
     info "Updated to $(git -C "${INSTALL_DIR}" rev-parse --short HEAD)"
 else
     info "Cloning repository …"
