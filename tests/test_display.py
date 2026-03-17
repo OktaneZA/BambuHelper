@@ -16,7 +16,6 @@ def _mock_hardware():
         "spidev": MagicMock(),
         "RPi": MagicMock(),
         "RPi.GPIO": MagicMock(),
-        "ST7789": MagicMock(),
     }
     for name, mock in mocks.items():
         if name not in sys.modules:

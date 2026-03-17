@@ -3,7 +3,8 @@
 Faithful Python/PIL port of display_ui.cpp, display_gauges.cpp,
 display_anim.cpp, and icons.h from Keralots/BambuHelper.
 
-The Waveshare 1.54" LCD module (240×240, ST7789) is driven via SPI.
+The Waveshare 1.54" LCD module (240×240, ST7789) is driven directly via
+spidev + RPi.GPIO using the full Waveshare init sequence.
 All rendering is done into a PIL Image which is then pushed to the display.
 
 Screen states (DISP-02):
@@ -438,67 +439,119 @@ def _draw_arc_gauge(
 # ------------------------------------------------------------------ #
 
 class ST7789:
-    """Wrapper around the Pimoroni st7789 PyPI library for the Pi Hut/Waveshare
-    1.54" 240×240 LCD (ST7789 controller).
+    """Raw SPI driver for the Waveshare 1.54" 240×240 ST7789 LCD.
+
+    Drives the display directly via spidev + RPi.GPIO — no Pimoroni library required.
+    Uses the full Waveshare init sequence (PORCTRL, GCTRL, VCOMS, gamma, etc.) which
+    is required to configure the LCD voltage / gamma circuits correctly.
 
     GPIO pin mapping (BCM numbering):
       DC  = GPIO 25  (physical pin 22)
       RST = GPIO 27  (physical pin 13)
-      BL  = GPIO 24  (physical pin 18)  — PWM backlight
-      CS  = GPIO 8   (physical pin 24, CE0) — hardware SPI0 chip-select
-      MOSI= GPIO 10  (physical pin 19)  — hardware SPI0, managed by library
-      SCLK= GPIO 11  (physical pin 23)  — hardware SPI0, managed by library
+      BL  = GPIO 18  (physical pin 12) — PWM backlight
+      CS  = GPIO 8   (physical pin 24, CE0) — managed by spidev CE0
+      MOSI= GPIO 10  (physical pin 19)
+      SCLK= GPIO 11  (physical pin 23)
     """
 
-    DC_PIN   = 25   # Data/Command  (physical pin 22)
-    RST_PIN  = 27   # Reset         (physical pin 13)
-    BL_PIN   = 24   # Backlight PWM (physical pin 18)
-    CS_PIN   = 8    # CE0           (physical pin 24)
+    DC_PIN    = 25
+    RST_PIN   = 27
+    BL_PIN    = 18   # GPIO 18, physical pin 12 (Waveshare standard wiring)
     SPI_PORT  = 0
-    SPI_SPEED = 40_000_000
+    SPI_CS    = 0    # spidev chip-select index: 0 = CE0 → /dev/spidev0.0
+    SPI_SPEED = 16_000_000
+
+    _CHUNK = 4096
 
     def __init__(self, brightness: int = 100) -> None:
-        """Initialise display via the st7789 library and configure PWM backlight."""
-        import ST7789 as _ST7789
+        """Initialise display via direct spidev + RPi.GPIO."""
+        import spidev
         import RPi.GPIO as GPIO
 
-        self._disp = _ST7789.ST7789(
-            port=self.SPI_PORT,
-            cs=self.CS_PIN,
-            dc=self.DC_PIN,
-            rst=self.RST_PIN,
-            backlight=self.BL_PIN,
-            rotation=0,
-            spi_speed_hz=self.SPI_SPEED,
-            width=WIDTH,
-            height=HEIGHT,
-        )
-
-        # Separate PWM for fine-grained brightness control (DISP-01)
         self._GPIO = GPIO
         GPIO.setmode(GPIO.BCM)
         GPIO.setwarnings(False)
+        GPIO.setup(self.DC_PIN, GPIO.OUT)
+        GPIO.setup(self.RST_PIN, GPIO.OUT)
         GPIO.setup(self.BL_PIN, GPIO.OUT)
-        self._pwm = GPIO.PWM(self.BL_PIN, 1000)
-        self._pwm.start(brightness / 255 * 100)
 
+        self._spi = spidev.SpiDev()
+        self._spi.open(self.SPI_PORT, self.SPI_CS)
+        self._spi.max_speed_hz = self.SPI_SPEED
+        self._spi.mode = 0
+
+        self._pwm = GPIO.PWM(self.BL_PIN, 1000)
+        self._pwm.start(max(0, min(255, brightness)) / 255 * 100)
+
+        self._reset()
+        self._init_display()
         logger.info("ST7789 display initialised (brightness=%d)", brightness)
+
+    def _cmd(self, cmd: int) -> None:
+        self._GPIO.output(self.DC_PIN, self._GPIO.LOW)
+        self._spi.xfer2([cmd])
+
+    def _data(self, data: bytes) -> None:
+        self._GPIO.output(self.DC_PIN, self._GPIO.HIGH)
+        mv = memoryview(data)
+        for offset in range(0, len(mv), self._CHUNK):
+            self._spi.writebytes2(mv[offset: offset + self._CHUNK])
+
+    def _reset(self) -> None:
+        import time
+        self._GPIO.output(self.RST_PIN, self._GPIO.HIGH)
+        time.sleep(0.05)
+        self._GPIO.output(self.RST_PIN, self._GPIO.LOW)
+        time.sleep(0.05)
+        self._GPIO.output(self.RST_PIN, self._GPIO.HIGH)
+        time.sleep(0.15)
+
+    def _init_display(self) -> None:
+        import time
+        self._cmd(0x01); time.sleep(0.15)   # SW reset
+        self._cmd(0x11); time.sleep(0.12)   # Sleep out
+        self._cmd(0xB2); self._data(bytes([0x0C, 0x0C, 0x00, 0x33, 0x33]))  # Porch control
+        self._cmd(0xB7); self._data(bytes([0x35]))                           # Gate control
+        self._cmd(0xBB); self._data(bytes([0x19]))                           # VCOMS
+        self._cmd(0xC0); self._data(bytes([0x2C]))                           # LCM control
+        self._cmd(0xC2); self._data(bytes([0x01]))                           # VDV/VRH enable
+        self._cmd(0xC3); self._data(bytes([0x12]))                           # VRH set
+        self._cmd(0xC4); self._data(bytes([0x20]))                           # VDV set
+        self._cmd(0xC6); self._data(bytes([0x0F]))                           # Frame rate 60 Hz
+        self._cmd(0xD0); self._data(bytes([0xA4, 0xA1]))                     # Power control 1
+        self._cmd(0xE0); self._data(bytes([0xD0, 0x04, 0x0D, 0x11, 0x13, 0x2B,  # Positive gamma
+                                           0x3F, 0x54, 0x4C, 0x18, 0x0D, 0x0B, 0x1F, 0x23]))
+        self._cmd(0xE1); self._data(bytes([0xD0, 0x04, 0x0C, 0x11, 0x13, 0x2C,  # Negative gamma
+                                           0x3F, 0x44, 0x51, 0x2F, 0x1F, 0x1F, 0x20, 0x23]))
+        self._cmd(0x21)                                                      # Inversion on
+        self._cmd(0x3A); self._data(bytes([0x05]))                           # 16-bit RGB565
+        self._cmd(0x36); self._data(bytes([0x00]))                           # MADCTL normal
+        self._cmd(0x2A); self._data(bytes([0x00, 0x00, 0x00, 0xEF]))        # Column 0–239
+        self._cmd(0x2B); self._data(bytes([0x00, 0x00, 0x00, 0xEF]))        # Row 0–239
+        self._cmd(0x29); time.sleep(0.05)                                    # Display on
 
     def set_brightness(self, brightness: int) -> None:
         """Set backlight brightness 0–255."""
         self._pwm.ChangeDutyCycle(max(0, min(255, brightness)) / 255 * 100)
 
     def show_image(self, image: Image.Image) -> None:
-        """Push a 240×240 RGB PIL Image to the display.
-
-        The st7789 library handles RGB→RGB565 conversion in C (fast).
-        """
-        self._disp.display(image.convert("RGB"))
+        """Push a 240×240 RGB PIL Image to the display."""
+        self._cmd(0x2A); self._data(bytes([0x00, 0x00, 0x00, 0xEF]))
+        self._cmd(0x2B); self._data(bytes([0x00, 0x00, 0x00, 0xEF]))
+        self._cmd(0x2C)
+        import numpy as np
+        arr = np.frombuffer(image.convert("RGB").tobytes(), dtype=np.uint8).reshape(HEIGHT, WIDTH, 3)
+        r = arr[:, :, 0].astype(np.uint16)
+        g = arr[:, :, 1].astype(np.uint16)
+        b = arr[:, :, 2].astype(np.uint16)
+        px565 = ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3)
+        self._data(px565.astype(np.dtype(">u2")).tobytes())
 
     def close(self) -> None:
-        """Release backlight PWM and GPIO resources."""
+        """Release SPI and GPIO resources."""
         try:
             self._pwm.stop()
+            self._spi.close()
             self._GPIO.cleanup()
         except Exception:  # noqa: BLE001
             pass

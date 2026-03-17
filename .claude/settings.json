@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(pip install:*)",
+      "Bash(python preview.py)",
+      "Bash(python -c \"import matplotlib.font_manager as fm; fonts = fm.findSystemFonts\\(\\); dv = [f for f in fonts if ''DejaVu'' in f and \\(''Sans.ttf'' in f or ''Sans-Bold'' in f\\)]; print\\(''\\\\n''.join\\(dv[:6]\\)\\)\")",
+      "Bash(python -c \"from PIL import ImageFont; f = ImageFont.truetype\\(''''C:/Windows/Fonts/arial.ttf'''', 18\\); print\\(''''arial ok''''\\)\")",
+      "Read(//c/Windows/Fonts/**)"
+    ],
+    "additionalDirectories": [
+      "c:\\Projects\\piweather\\src",
+      "c:\\Projects\\piweather\\tests",
+      "c:\\Projects\\piweather"
+    ]
+  }
+}

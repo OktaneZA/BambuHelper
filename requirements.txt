@@ -4,4 +4,5 @@ pillow==10.3.0
 flask==3.0.3
 RPi.GPIO==0.7.1
 requests==2.31.0
-st7789>=0.0.4
+numpy>=1.24
+spidev>=3.6
