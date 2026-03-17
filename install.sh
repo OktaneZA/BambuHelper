@@ -83,9 +83,10 @@ step "Installing BambuHelper to ${INSTALL_DIR}"
 info "Downloading latest release …"
 TMP_DIR="$(mktemp -d)"
 curl -fsSL "${TARBALL_URL}" | tar -xz -C "${TMP_DIR}"
-# GitHub tarballs extract to <repo>-<branch>/ — move contents into place
+# GitHub tarballs extract to <RepoName>-<branch>/ — use glob to handle any casing
+EXTRACTED_DIR="$(find "${TMP_DIR}" -mindepth 1 -maxdepth 1 -type d | head -1)"
 rm -rf "${INSTALL_DIR}"
-mv "${TMP_DIR}"/bambuhelper-master "${INSTALL_DIR}"
+mv "${EXTRACTED_DIR}" "${INSTALL_DIR}"
 rm -rf "${TMP_DIR}"
 info "Installed to ${INSTALL_DIR}"
 
