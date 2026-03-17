@@ -236,6 +236,8 @@ fi
 step "Writing config to ${CONFIG_FILE}"
 
 mkdir -p "${CONFIG_DIR}"
+chown "${SERVICE_USER}:${SERVICE_USER}" "${CONFIG_DIR}"
+chmod 750 "${CONFIG_DIR}"
 
 cat > "${CONFIG_FILE}" <<JSONEOF
 {
@@ -255,9 +257,9 @@ cat > "${CONFIG_FILE}" <<JSONEOF
 }
 JSONEOF
 
-chown root:"${SERVICE_USER}" "${CONFIG_FILE}"
+chown "${SERVICE_USER}:${SERVICE_USER}" "${CONFIG_FILE}"
 chmod 640 "${CONFIG_FILE}"
-info "Config written with permissions 640 (root:${SERVICE_USER})"
+info "Config written with permissions 640 (${SERVICE_USER}:${SERVICE_USER})"
 
 # ------------------------------------------------------------------ #
 # Install systemd service (INST-05)                                    #
