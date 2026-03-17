@@ -30,7 +30,7 @@ CONFIG_FILE="${CONFIG_DIR}/config.json"
 SERVICE_FILE="/etc/systemd/system/bambu-helper.service"
 TIMER_FILE="/etc/systemd/system/bambu-helper-reboot.timer"
 SERVICE_USER="bambu-helper"
-REPO_URL="https://github.com/YOUR_USER/bambuhelper.git"  # UPDATE THIS
+TARBALL_URL="https://github.com/OktaneZA/bambuhelper/archive/refs/heads/master.tar.gz"
 
 # ------------------------------------------------------------------ #
 # INST-02: Verify running on Raspberry Pi                              #
@@ -80,16 +80,14 @@ fi
 
 step "Installing BambuHelper to ${INSTALL_DIR}"
 
-if [[ -d "${INSTALL_DIR}/.git" ]]; then
-    info "Updating existing installation …"
-    git -C "${INSTALL_DIR}" fetch --quiet
-    git -C "${INSTALL_DIR}" reset --hard origin/master --quiet
-    info "Updated to $(git -C "${INSTALL_DIR}" rev-parse --short HEAD)"
-else
-    info "Cloning repository …"
-    git clone --quiet "${REPO_URL}" "${INSTALL_DIR}"
-    info "Cloned to ${INSTALL_DIR}"
-fi
+info "Downloading latest release …"
+TMP_DIR="$(mktemp -d)"
+curl -fsSL "${TARBALL_URL}" | tar -xz -C "${TMP_DIR}"
+# GitHub tarballs extract to <repo>-<branch>/ — move contents into place
+rm -rf "${INSTALL_DIR}"
+mv "${TMP_DIR}"/bambuhelper-master "${INSTALL_DIR}"
+rm -rf "${TMP_DIR}"
+info "Installed to ${INSTALL_DIR}"
 
 # ------------------------------------------------------------------ #
 # Create venv and install dependencies                                 #
