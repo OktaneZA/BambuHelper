@@ -216,7 +216,11 @@ class BambuClient:
     def _build_client(self) -> mqtt.Client:
         """Create and configure a paho MQTT client."""
         client_id = f"bambu_helper_{self._attempt}"
-        client = mqtt.Client(client_id=client_id, clean_session=True)
+        client = mqtt.Client(
+            mqtt.CallbackAPIVersion.VERSION1,
+            client_id=client_id,
+            clean_session=True,
+        )
         client.max_inflight_messages_set(1)
 
         # Callbacks
