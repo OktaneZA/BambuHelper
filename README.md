@@ -105,15 +105,24 @@ Cloud mode connects via Bambu Lab's MQTT cloud service. Useful if the Pi is on a
 
 > No credentials are stored — BambuHelper only stores this time-limited token, valid for ~3 months. It has read-only access and cannot send commands to your printer.
 
-**Option A — Browser Cookies (easiest):**
+**Option A — Chrome or Edge:**
+
+1. Go to **[bambulab.com](https://bambulab.com)** and log in to your account
+2. Press **F12** to open Developer Tools
+3. Click the **Application** tab at the top
+4. In the left panel expand **Cookies** → click **`https://bambulab.com`**
+5. In the table on the right, find the row named **`token`**
+6. Click on it — the full value appears at the bottom of the panel (starts with `eyJ...`)
+7. Copy the full value
+
+**Option B — Internet Explorer / Edge Legacy:**
 
 1. Go to **[bambulab.com](https://bambulab.com)** and log in
-2. Press **F12** → **Application** tab
-3. In the left panel expand **Cookies** → click `https://bambulab.com`
-4. Find the cookie named **`token`** — the value starts with `eyJ...`
-5. Copy the full value
+2. Press **F12** → click the **Debugger** tab
+3. Click the **Cookies** icon in the toolbar (or go to **Network** → select any request → **Cookies** tab)
+4. Find the cookie named **`token`** and copy its value
 
-**Option B — Python helper script:**
+**Option C — Python helper script:**
 
 ```bash
 pip install curl_cffi
