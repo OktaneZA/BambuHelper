@@ -77,14 +77,27 @@ def main() -> None:
         print(f"\nLogin request failed: {exc}")
         sys.exit(1)
 
-    # Handle 2FA — check for tfaKey flow first (email verification via key)
+    # Handle 2FA / verification flows
     tfa_key = resp.get("tfaKey")
     login_type = resp.get("loginType")
-    has_token = bool(resp.get("accessToken"))
-    print(f"[debug] loginType={login_type!r} tfaKey={'<set>' if tfa_key else None!r} hasAccessToken={has_token}")
 
-    if tfa_key and not resp.get("accessToken"):
-        # Bambu sent a tfaKey — request email code then verify
+    if login_type == "verifyCode" or (not resp.get("accessToken") and not tfa_key):
+        # Bambu sent a verification code to your email automatically
+        print("\nEmail verification required.")
+        print("Check your email for a verification code from Bambu Lab.")
+        verify_code = input("Enter verification code: ").strip()
+        try:
+            resp = _post(session, api_base + LOGIN_PATH, {
+                "account": email,
+                "password": password,
+                "verifyCode": verify_code,
+            })
+        except Exception as exc:
+            print(f"\nVerification failed: {exc}")
+            sys.exit(1)
+
+    elif tfa_key and not resp.get("accessToken"):
+        # tfaKey flow — request email code then verify
         print("\nEmail verification required (tfaKey flow).")
         try:
             _post(session, api_base + EMAIL_SEND, {"tfaKey": tfa_key})
