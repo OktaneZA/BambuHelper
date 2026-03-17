@@ -29,12 +29,12 @@ A Python port of [BambuHelper](https://github.com/Keralots/BambuHelper) for the 
 | CS | GPIO 8 | Pin 24 (CE0) |
 | DC | GPIO 25 | Pin 22 |
 | RST | GPIO 27 | Pin 13 |
-| BL | GPIO 24 | Pin 18 |
+| BL | GPIO 18 | Pin 12 |
 
 > **Enable SPI** on the Pi: `sudo raspi-config` → Interface Options → SPI → Enable.
 > The installer (`install.sh`) does this automatically.
 
-See [INSTALL.md](INSTALL.md) for the full wiring diagram.
+![Wiring Diagram](docs/wiring-diagram.png)
 
 ---
 
