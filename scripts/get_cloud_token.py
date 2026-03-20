@@ -1,11 +1,14 @@
 """Bambu Lab cloud token extractor.
 
 Uses Selenium + system Chromium to log into bambulab.com and extract the
-session token from cookies. Works headlessly on a Raspberry Pi (no display
-needed) or in a visible window on a desktop.
+MQTT-compatible accessToken JWT from the login network response.
 
-Usage on Raspberry Pi (called automatically by install.sh):
-    # install.sh handles chromium/selenium setup
+The browser cookie 'token' is a web session token (not a JWT) and is
+rejected by the Bambu MQTT broker.  This script captures the actual
+accessToken (eyJ...) from the login POST response body via Chrome's
+network performance log — that is the token required for MQTT.
+
+Usage on Raspberry Pi (called automatically by install.sh on Pi 4+):
     python scripts/get_cloud_token.py --headless --output-file /tmp/token.txt
 
 Usage on a desktop PC:
@@ -20,6 +23,7 @@ Security: the token is written to --output-file or printed once to stdout only.
 
 import argparse
 import getpass
+import json
 import os
 import sys
 import time
@@ -41,8 +45,8 @@ POLL_SECONDS = 120  # wait up to 2 min for login + any verification step
 
 # System Chromium paths (Raspberry Pi OS Bookworm / Bullseye)
 _CHROMIUM_CANDIDATES = [
-    "/usr/bin/chromium",         # Pi OS Bookworm
-    "/usr/bin/chromium-browser", # Pi OS Bullseye / Ubuntu
+    "/usr/bin/chromium",          # Pi OS Bookworm
+    "/usr/bin/chromium-browser",  # Pi OS Bullseye / Ubuntu
 ]
 _CHROMEDRIVER_CANDIDATES = [
     "/usr/bin/chromedriver",
@@ -55,7 +59,7 @@ def _make_driver(headless: bool) -> webdriver.Chrome:
     options = Options()
     if headless:
         options.add_argument("--headless")
-    options.add_argument("--no-sandbox")          # required when running as root
+    options.add_argument("--no-sandbox")           # required when running as root
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--disable-gpu")
     options.add_argument("--window-size=1280,800")
@@ -63,6 +67,8 @@ def _make_driver(headless: bool) -> webdriver.Chrome:
         "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
         "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
     )
+    # Enable network performance logging so we can extract the accessToken JWT
+    options.set_capability("goog:loggingPrefs", {"performance": "ALL"})
 
     # Use system Chromium + chromedriver if available (Pi)
     chromium_bin = next((p for p in _CHROMIUM_CANDIDATES if os.path.exists(p)), None)
@@ -77,18 +83,67 @@ def _make_driver(headless: bool) -> webdriver.Chrome:
     return webdriver.Chrome(options=options)
 
 
-def _get_token_cookie(driver: webdriver.Chrome) -> str | None:
-    """Return the Bambu session token cookie value, or None."""
+def _get_jwt_from_network_logs(driver: webdriver.Chrome) -> str | None:
+    """Scan Chrome performance logs for the accessToken JWT in the login response.
+
+    The Bambu MQTT broker requires the accessToken JWT (eyJ...) from the login
+    POST response, not the browser session cookie which is a different format.
+    """
+    try:
+        logs = driver.get_log("performance")
+    except Exception:
+        return None
+
+    for entry in reversed(logs):  # scan most recent first
+        try:
+            msg = json.loads(entry["message"])["message"]
+            if msg.get("method") != "Network.responseReceived":
+                continue
+            params = msg.get("params", {})
+            response = params.get("response", {})
+            url = response.get("url", "")
+            status = response.get("status", 0)
+
+            # Look for a successful login endpoint response
+            if status != 200:
+                continue
+            if "sign-in" not in url and "login" not in url:
+                continue
+
+            request_id = params.get("requestId", "")
+            if not request_id:
+                continue
+
+            body_resp = driver.execute_cdp_cmd(
+                "Network.getResponseBody", {"requestId": request_id}
+            )
+            body = json.loads(body_resp.get("body", "{}"))
+            token = body.get("accessToken") or body.get("access_token")
+            if token and token.startswith("eyJ"):
+                return token
+
+        except Exception:
+            continue
+
+    return None
+
+
+def _get_cookie_token(driver: webdriver.Chrome) -> str | None:
+    """Return the Bambu session cookie value, or None.
+
+    This is the web session token — it works for the REST API but is NOT
+    accepted by the MQTT broker.  Used as a fallback / login-complete signal.
+    """
     for cookie in driver.get_cookies():
         if cookie.get("name") == "token":
             val = cookie.get("value", "")
-            if val.startswith("eyJ") or len(val) > 20:  # sanity check
+            if len(val) > 20:
                 return val
     return None
 
 
 def extract_token(email: str, password: str, headless: bool) -> str:
-    """Open bambulab.com, log in, and return the session token from cookies."""
+    """Open bambulab.com, log in, and return the MQTT-compatible accessToken JWT."""
     driver = _make_driver(headless)
     wait = WebDriverWait(driver, 15)
 
@@ -160,18 +215,18 @@ def extract_token(email: str, password: str, headless: bool) -> str:
         except TimeoutException:
             pass  # no popup — that's fine
 
-        # ── Poll for token, handling email verification if needed ─────────────
+        # ── Poll for login completion, handling email verification if needed ──
         print(f"Waiting for login to complete (up to {POLL_SECONDS}s) …")
         if headless:
             print("If a verification code was emailed to you, enter it at the prompt below.")
 
         code_submitted = False
         for _ in range(POLL_SECONDS):
-            token = _get_token_cookie(driver)
-            if token:
-                return token
+            # Login is complete when the session cookie appears
+            if _get_cookie_token(driver):
+                break
 
-            # Detect verification code input field in the browser
+            # Detect verification code input field and prompt in terminal
             if not code_submitted:
                 try:
                     code_el = driver.find_element(By.CSS_SELECTOR,
@@ -196,11 +251,30 @@ def extract_token(email: str, password: str, headless: bool) -> str:
                     pass
 
             time.sleep(1)
+        else:
+            raise RuntimeError(
+                "Login timed out. Check your credentials and try again.")
 
-        raise RuntimeError(
-            "Token not found after waiting. "
-            "Check your credentials and try again."
-        )
+        # ── Extract the MQTT-compatible JWT accessToken ───────────────────────
+        # The browser session cookie 'token' is NOT a JWT and is rejected by
+        # the MQTT broker.  We capture the real accessToken from the login
+        # POST response via Chrome's network performance log.
+        print("Extracting access token …")
+        jwt_token = _get_jwt_from_network_logs(driver)
+        if jwt_token:
+            return jwt_token
+
+        # Fallback warning — cookie token will work for REST API but not MQTT
+        cookie_token = _get_cookie_token(driver)
+        if cookie_token:
+            print(
+                "\nWarning: could not find JWT accessToken in network logs.\n"
+                "The cookie token may not work for MQTT. Try logging in again\n"
+                "or use the requests-based script to get a proper JWT token."
+            )
+            return cookie_token
+
+        raise RuntimeError("No token found after login.")
 
     finally:
         driver.quit()
@@ -208,7 +282,7 @@ def extract_token(email: str, password: str, headless: bool) -> str:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Extract Bambu Lab cloud token via browser automation"
+        description="Extract Bambu Lab MQTT accessToken via browser automation"
     )
     parser.add_argument(
         "--headless", action="store_true",
