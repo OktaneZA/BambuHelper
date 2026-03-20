@@ -79,15 +79,22 @@ sudo bash install.sh
 
 The installer will:
 1. Verify you are on a Raspberry Pi
-2. Install system packages (`python3-venv`, `python3-pip`, `git`, `python3-spidev`, `python3-rpi.gpio`)
+2. Install system packages (`python3-venv`, `python3-pip`, `python3-spidev`, `python3-rpi.gpio`, Pillow build deps)
 3. Enable the SPI interface
-4. Clone the repo to `/opt/bambu-helper`
+4. Download and extract the latest release tarball to `/opt/bambu-helper`
 5. Create a Python virtual environment and install dependencies
 6. Create a system user `bambu-helper`
-7. Prompt you for your printer connection details
-8. Write `/etc/bambu-helper/config.json` with secure permissions
+7. Prompt you to choose **LAN** or **Cloud** connection mode:
+   - **LAN:** enter printer IP and access code
+   - **Cloud:** the installer launches headless Chromium, logs into bambulab.com with your credentials, and extracts the session token automatically. If Bambu emails a verification code you will be prompted for it in the terminal.
+8. Write `/etc/bambu-helper/config.json` with secure permissions (640, owned by `bambu-helper`)
 9. Install and start the systemd service
 10. Print the web portal URL
+
+> **Reinstalling:** if `/etc/bambu-helper/config.json` already exists, all configuration prompts are skipped and your existing credentials are preserved. Delete the file first to reconfigure:
+> ```bash
+> sudo rm /etc/bambu-helper/config.json && sudo bash install.sh
+> ```
 
 ---
 
