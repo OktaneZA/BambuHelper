@@ -1,150 +1,157 @@
-"""Bambu Lab cloud token extractor.
+"""Bambu Lab cloud token extractor — browser automation method.
 
-Adapted from the Python helper tool in Keralots/BambuHelper (tools/get_token.py).
-Uses curl_cffi to impersonate a browser and bypass Cloudflare, handling 2FA
-(TOTP authenticator app or email verification code).
+Opens a Chromium browser window, navigates to bambulab.com, and logs you
+in using your credentials. The session token is then extracted from cookies.
+
+If Bambu sends a verification email, the browser window stays open so you
+can enter the code directly — no script changes needed.
 
 Usage:
-    pip install curl_cffi
+    pip install playwright
+    playwright install chromium
     python scripts/get_cloud_token.py
 
-The extracted token can then be pasted into the BambuHelper web portal
-(http://<pi-ip>:8080) under Connection → Cloud Token.
+Run this on your Windows/Mac/Linux PC (not the Pi). Copy the token that
+appears at the end into the BambuHelper web portal under Connection → Cloud Token.
 
 Tokens are valid for approximately 3 months.
-
-Security: the token is printed ONCE to stdout only. Do not log it further.
+Security: the token is printed ONCE to stdout only.
 """
 
-import json
+import getpass
 import sys
 
-import requests as cffi_requests
+try:
+    from playwright.sync_api import TimeoutError as PlaywrightTimeout
+    from playwright.sync_api import sync_playwright
+except ImportError:
+    print("Playwright is not installed. Run:")
+    print("  pip install playwright")
+    print("  playwright install chromium")
+    sys.exit(1)
 
-# Region selection
-REGIONS = {
-    "1": ("us", "https://api.bambulab.com"),
-    "2": ("cn", "https://api.bambulab.cn"),
-}
-
-LOGIN_PATH    = "/v1/user-service/user/login"
-TOTP_PATH     = "/v1/user-service/user/login/tfa/mfa"
-EMAIL_SEND    = "/v1/user-service/user/login/tfa/email"
-EMAIL_PATH    = "/v1/user-service/user/login/tfa/email/code"
-
-# Headers that mimic OrcaSlicer (same as bambu_cloud.cpp)
-_HEADERS = {
-    "User-Agent": "bambu_network_agent/01.09.05.01",
-    "X-BBL-Client-Name": "OrcaSlicer",
-    "X-BBL-Client-Version": "01.09.05.51",
-    "Content-Type": "application/json",
-}
+BAMBU_URL = "https://bambulab.com/en-gb"
+COOKIE_NAME = "token"
+LOGIN_POLL_SECONDS = 120  # wait up to 2 minutes for login + any verification
 
 
-def _post(session, url: str, body: dict) -> dict:
-    """POST JSON and return parsed response."""
-    resp = session.post(url, json=body, headers=_HEADERS, timeout=15)
-    resp.raise_for_status()
-    return resp.json()
+def _find_token(cookies: list) -> str | None:
+    """Return the Bambu token cookie value if present."""
+    for cookie in cookies:
+        if cookie.get("name") == COOKIE_NAME and "bambulab.com" in cookie.get("domain", ""):
+            return cookie.get("value")
+    return None
 
 
 def main() -> None:
     print("\nBambu Lab Cloud Token Extractor")
     print("=" * 38)
-    print("Tokens are valid for ~3 months.\n")
+    print("A browser window will open. Log in and the token will be")
+    print("extracted automatically. If asked for a verification code,")
+    print("enter it in the browser — the script will wait.\n")
 
-    # Region selection
-    print("Select your region:")
-    print("  1) Global (US / EU)")
-    print("  2) China (CN)")
-    region_choice = input("Enter 1 or 2 [1]: ").strip() or "1"
-    region_key, api_base = REGIONS.get(region_choice, REGIONS["1"])
-
-    email = input("\nBambu Lab account email: ").strip()
-    import getpass
+    email = input("Bambu Lab account email: ").strip()
     password = getpass.getpass("Password: ")
 
-    session = cffi_requests.Session()
-    session.verify = True
+    print("\nLaunching browser …")
 
-    print("\nLogging in …")
-    try:
-        resp = _post(session, api_base + LOGIN_PATH, {
-            "account": email,
-            "password": password,
-        })
-    except Exception as exc:
-        print(f"\nLogin request failed: {exc}")
-        sys.exit(1)
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=False)
+        context = browser.new_context(
+            user_agent=(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/124.0.0.0 Safari/537.36"
+            )
+        )
+        page = context.new_page()
 
-    # Handle 2FA / verification flows
-    tfa_key = resp.get("tfaKey")
-    login_type = resp.get("loginType")
+        # ── Navigate to bambulab.com ────────────────────────────────────────
+        page.goto(BAMBU_URL, wait_until="domcontentloaded")
 
-    if login_type == "verifyCode" or (not resp.get("accessToken") and not tfa_key):
-        # Bambu sent a verification code to your email automatically
-        print("\nEmail verification required.")
-        print("Check your email for a verification code from Bambu Lab.")
-        verify_code = input("Enter verification code: ").strip()
+        # ── Click the account/profile icon (top-right, next to Store) ───────
+        print("Clicking account icon …")
         try:
-            resp = _post(session, api_base + LOGIN_PATH, {
-                "account": email,
-                "password": password,
-                "verifyCode": verify_code,
-            })
-        except Exception as exc:
-            print(f"\nVerification failed: {exc}")
-            sys.exit(1)
+            # The icon is an <a> or <button> near the Store button
+            page.click(
+                'header a[href*="sign-in"], '
+                'header a[href*="login"], '
+                'header button[aria-label*="account" i], '
+                'header button[aria-label*="profile" i], '
+                'header [class*="user" i] a, '
+                'header svg[class*="user" i]',
+                timeout=8000,
+            )
+        except PlaywrightTimeout:
+            # Fallback: look for a person/account icon near the Store button
+            try:
+                store_btn = page.locator('a:has-text("Store"), button:has-text("Store")').first
+                store_btn.locator("xpath=preceding-sibling::*[1]").click(timeout=5000)
+            except Exception:
+                print("Could not find the account icon automatically.")
+                print("Please click the account icon in the browser window to open the login form.")
 
-    elif tfa_key and not resp.get("accessToken"):
-        # tfaKey flow — request email code then verify
-        print("\nEmail verification required (tfaKey flow).")
+        # ── Wait for login modal / email field ───────────────────────────────
+        print("Waiting for login form …")
         try:
-            _post(session, api_base + EMAIL_SEND, {"tfaKey": tfa_key})
-        except Exception as exc:
-            print(f"\nFailed to send verification email: {exc}")
-            sys.exit(1)
-        print("Check your email for a verification code.")
-        email_code = input("Enter email code: ").strip()
-        try:
-            resp = _post(session, api_base + EMAIL_PATH, {
-                "tfaKey": tfa_key,
-                "code": email_code,
-            })
-        except Exception as exc:
-            print(f"\nEmail code request failed: {exc}")
-            sys.exit(1)
+            page.wait_for_selector(
+                'input[placeholder*="Email" i], input[type="email"]',
+                timeout=15000,
+            )
+        except PlaywrightTimeout:
+            print("Login form did not appear. Please click the login button in the browser.")
+            page.wait_for_selector(
+                'input[placeholder*="Email" i], input[type="email"]',
+                timeout=60000,
+            )
 
-    elif login_type in ("tfa", "mfa"):
-        print("\n2FA required (authenticator app).")
-        totp_code = input("Enter TOTP code: ").strip()
-        try:
-            resp = _post(session, api_base + TOTP_PATH, {
-                "account": email,
-                "code": totp_code,
-            })
-        except Exception as exc:
-            print(f"\n2FA request failed: {exc}")
-            sys.exit(1)
+        # ── Fill credentials ─────────────────────────────────────────────────
+        print("Entering credentials …")
+        email_input = page.locator('input[placeholder*="Email" i], input[type="email"]').first
+        email_input.fill(email)
 
-    elif login_type == "email_code":
-        print("\nEmail verification required.")
-        print("Check your email for a verification code.")
-        email_code = input("Enter email code: ").strip()
-        try:
-            resp = _post(session, api_base + EMAIL_PATH, {
-                "account": email,
-                "code": email_code,
-            })
-        except Exception as exc:
-            print(f"\nEmail code request failed: {exc}")
-            sys.exit(1)
+        pw_input = page.locator('input[type="password"]').first
+        pw_input.fill(password)
 
-    # Extract token
-    token = resp.get("accessToken") or resp.get("token") or resp.get("access_token")
+        # Accept Terms of Use checkbox if present and unchecked
+        try:
+            checkbox = page.locator('input[type="checkbox"]').first
+            if not checkbox.is_checked():
+                checkbox.check(timeout=2000)
+        except Exception:
+            pass
+
+        # Click Log In button
+        page.locator('button[type="submit"], button:has-text("Log In")').first.click()
+
+        # ── Handle "Notice" / Terms popup if it appears ──────────────────────
+        try:
+            page.wait_for_selector('text="Agree"', timeout=4000)
+            page.locator('button:has-text("Agree")').click()
+            print("Accepted Terms of Use notice.")
+        except PlaywrightTimeout:
+            pass  # no notice popup — that's fine
+
+        # ── Poll for token cookie ────────────────────────────────────────────
+        print(
+            f"\nWaiting for login to complete (up to {LOGIN_POLL_SECONDS}s) …"
+            "\nIf a verification email was sent, enter the code in the browser window."
+        )
+        token = None
+        for _ in range(LOGIN_POLL_SECONDS):
+            cookies = context.cookies()
+            token = _find_token(cookies)
+            if token:
+                break
+            page.wait_for_timeout(1000)
+
+        browser.close()
+
     if not token:
-        print("\nFailed to extract token from response.")
-        print("Response keys:", list(resp.keys()))
+        print("\nToken not found after waiting. Possible causes:")
+        print("  - Login failed (wrong password)")
+        print("  - Verification step not completed in time")
+        print("  - Bambu changed their cookie name")
         sys.exit(1)
 
     print("\n" + "=" * 60)
@@ -153,8 +160,7 @@ def main() -> None:
     print(token)
     print("=" * 60)
     print("\nCopy the token above and paste it into:")
-    print(f"  BambuHelper web portal → Connection → Cloud Token")
-    print(f"\nRegion: {region_key}")
+    print("  BambuHelper web portal → Connection → Cloud Token")
     print("Token is valid for ~3 months. Run this script again to refresh.\n")
 
 

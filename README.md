@@ -122,14 +122,17 @@ Cloud mode connects via Bambu Lab's MQTT cloud service. Useful if the Pi is on a
 3. Click the **Cookies** icon in the toolbar (or go to **Network** → select any request → **Cookies** tab)
 4. Find the cookie named **`token`** and copy its value
 
-**Option C — Python helper script:**
+**Option C — Python helper script (recommended — handles all verification flows automatically):**
+
+Run this on your **Windows/Mac/Linux PC** (not the Pi):
 
 ```bash
-pip install curl_cffi
+pip install playwright
+playwright install chromium
 python scripts/get_cloud_token.py
 ```
 
-Follow the prompts — enter your email, password, and 2FA code. The token is printed at the end.
+A browser window opens, logs you in, and prints the token. If Bambu sends a verification email, enter the code directly in the browser — the script waits up to 2 minutes.
 
 ### Configuring Cloud Mode in the Portal
 
