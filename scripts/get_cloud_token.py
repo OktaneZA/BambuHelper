@@ -80,7 +80,7 @@ def get_token(api_base: str, email: str, password: str) -> str:
     token      = resp.get("accessToken") or resp.get("token")
 
     # ── Already have token ────────────────────────────────────────────────
-    if token and token.startswith("eyJ"):
+    if token:
         return token
 
     # ── verifyCode: Bambu emails a code automatically ─────────────────────
@@ -129,9 +129,9 @@ def get_token(api_base: str, email: str, password: str) -> str:
             raise RuntimeError(f"2FA failed: {exc}") from exc
         token = resp.get("accessToken") or resp.get("token")
 
-    if not token or not token.startswith("eyJ"):
+    if not token:
         raise RuntimeError(
-            f"No JWT accessToken in response. Keys received: {list(resp.keys())}"
+            f"No accessToken in response. Keys received: {list(resp.keys())}"
         )
 
     return token
