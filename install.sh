@@ -183,63 +183,34 @@ if [[ "$MODE_CHOICE" == "2" ]]; then
     read -r -p "Bambu Cloud region (us/eu/cn) [us]: " REGION </dev/tty || true
     REGION="${REGION:-us}"
 
-    # ── Fetch token: browser automation on Pi 4+ (≥1 GB RAM), manual on Pi Zero ──
+    # ── Fetch token via Bambu API (same as Bambu Studio / OrcaSlicer) ───────
     echo ""
-    TOTAL_MEM_KB=$(grep MemTotal /proc/meminfo | awk '{print $2}')
-    TOTAL_MEM_MB=$(( TOTAL_MEM_KB / 1024 ))
-    info "Detected ${TOTAL_MEM_MB} MB RAM"
+    info "Logging in to Bambu Lab API to fetch your JWT access token …"
+    info "Enter your Bambu Lab account credentials at the prompts below."
+    info "If Bambu sends a verification email, you will be prompted for the code."
+    echo ""
 
-    if [[ "${TOTAL_MEM_MB}" -ge 1024 ]]; then
-        step "Installing Chromium for token extraction"
+    TOKEN_FILE="$(mktemp)"
+    set +e
+    "${INSTALL_DIR}/.venv/bin/python" "${INSTALL_DIR}/scripts/get_cloud_token.py" \
+        --output-file "${TOKEN_FILE}" </dev/tty
+    TOKEN_EXIT=$?
+    set -e
+    BAMBU_TOKEN="$(cat "${TOKEN_FILE}" 2>/dev/null || echo "")"
+    rm -f "${TOKEN_FILE}"
 
-        # Pi OS Bookworm uses 'chromium' + 'chromium-driver';
-        # Bullseye uses 'chromium-browser' + 'chromium-chromedriver'
-        if apt-cache show chromium &>/dev/null 2>&1; then
-            apt-get install -y -qq chromium chromium-driver
-            info "Installed chromium + chromium-driver"
-        else
-            apt-get install -y -qq chromium-browser chromium-chromedriver
-            info "Installed chromium-browser + chromium-chromedriver"
-        fi
-
-        "${INSTALL_DIR}/.venv/bin/pip" install --quiet selenium
-        info "Installed selenium"
-
-        echo ""
-        info "Launching headless browser to log in to Bambu Lab …"
-        info "Enter your Bambu Lab account credentials at the prompts below."
-        info "If a verification email is sent, you will be prompted for the code."
-        echo ""
-
-        TOKEN_FILE="$(mktemp)"
-        set +e
-        "${INSTALL_DIR}/.venv/bin/python" "${INSTALL_DIR}/scripts/get_cloud_token.py" \
-            --headless --output-file "${TOKEN_FILE}" </dev/tty
-        TOKEN_EXIT=$?
-        set -e
-        BAMBU_TOKEN="$(cat "${TOKEN_FILE}" 2>/dev/null || echo "")"
-        rm -f "${TOKEN_FILE}"
-
-        if [[ -z "${BAMBU_TOKEN}" ]] || [[ "${TOKEN_EXIT}" -ne 0 ]]; then
-            warn "Automatic token extraction failed — falling back to manual entry."
-            BAMBU_TOKEN=""
-        else
-            info "Token extracted successfully."
-        fi
-    else
-        warn "Low memory Pi (${TOTAL_MEM_MB} MB) — headless Chromium would crash the system."
-        warn "Please extract the token on your PC using scripts/get_cloud_token.py, then paste it below."
+    if [[ -z "${BAMBU_TOKEN}" ]] || [[ "${TOKEN_EXIT}" -ne 0 ]]; then
+        warn "Token extraction failed — you can paste it manually or set it later via the portal."
         BAMBU_TOKEN=""
+    else
+        info "Token extracted successfully."
     fi
 
     if [[ -z "${BAMBU_TOKEN}" ]]; then
         echo ""
-        echo "  To get your token on a PC:"
-        echo "    pip install selenium"
+        echo "  To get your token manually, run on any PC with Python:"
+        echo "    pip install requests"
         echo "    python /opt/bambu-helper/scripts/get_cloud_token.py"
-        echo ""
-        echo "  Or manually: log in to bambulab.com → F12 → Application → Cookies"
-        echo "  → https://bambulab.com → find the cookie named 'token' → copy the eyJ... value."
         echo ""
         read -r -s -p "Paste your cloud token (or press Enter to configure later via the portal): " \
             BAMBU_TOKEN </dev/tty || true
