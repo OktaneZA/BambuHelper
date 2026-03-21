@@ -167,6 +167,7 @@ class BambuClient:
         self._last_pushall = 0.0
         self._pushall_seq = 0
         self._is_cloud = config.get("connection_mode") == "cloud"
+        self._connected_event = threading.Event()
 
     # ------------------------------------------------------------------ #
     # Public API                                                           #
@@ -182,9 +183,16 @@ class BambuClient:
             logger.info("MQTT connect attempt %d (mode=%s)", self._attempt, self._config["connection_mode"])
 
             try:
+                self._connected_event.clear()
                 self._client = self._build_client()
                 self._do_connect()
                 self._client.loop_start()
+
+                # Wait for CONNACK before entering the run loop (paho 2.x
+                # is_connected() returns False until CONNACK is received)
+                if not self._connected_event.wait(timeout=15):
+                    logger.warning("MQTT CONNACK not received within 15s — aborting")
+                    raise TimeoutError("No CONNACK")
 
                 # Wait for either shutdown or stale-timeout, sending pushall periodically
                 self._run_loop(shutdown_event)
@@ -268,6 +276,7 @@ class BambuClient:
 
     def _on_connect(self, client: mqtt.Client, userdata: Any, flags: dict, rc: int) -> None:
         """Called by paho on successful or failed connect."""
+        self._connected_event.set()  # unblock run_forever regardless of rc
         if rc != 0:
             logger.warning("MQTT connect refused: rc=%d (%s)", rc, mqtt.connack_string(rc))
             return
