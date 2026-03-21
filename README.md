@@ -2,7 +2,7 @@
 
 > **Python port of [Keralots/BambuHelper](https://github.com/Keralots/BambuHelper) — all credit for the original design, icons, and display logic goes to [@Keralots](https://github.com/Keralots).**
 
-A Python port of [BambuHelper](https://github.com/Keralots/BambuHelper) for the **Raspberry Pi Zero 2 W** with a **Waveshare 1.54" LCD** (240×240 ST7789). Displays live Bambu Lab 3D printer status — print progress, temperatures, fan speeds, layer count, and ETA — with the same faithful visual design as the original ESP32 version.
+A Python port of [BambuHelper](https://github.com/Keralots/BambuHelper) for the **Raspberry Pi Zero 2 W** with a **Waveshare 1.54" LCD** (240×240 ST7789). Displays live Bambu Lab 3D printer status — nozzle and bed temperatures, print progress, ETA, layer count, and speed — on a 240×240 display. Also serves a live display preview image via the web portal at `/preview`.
 
 ![Screen states: connecting → printing dashboard → finished](.github/screenshot.png)
 
@@ -103,54 +103,43 @@ Cloud mode connects via Bambu Lab's MQTT cloud service. Useful if the Pi is on a
 
 ### Getting Your Cloud Token
 
-> No credentials are stored — BambuHelper only stores this time-limited token, valid for ~3 months. It has read-only access and cannot send commands to your printer.
+> No credentials are stored — BambuHelper only stores this time-limited JWT access token, valid for ~3 months. It has read-only access and cannot send commands to your printer.
 
-**Option A — Chrome or Edge:**
+**The installer handles this automatically.** During `install.sh` setup, when you select Cloud mode it calls `scripts/get_cloud_token.py`, which logs in to the Bambu Lab API directly (the same endpoint used by Bambu Studio / OrcaSlicer). Enter your email and password at the prompts. If Bambu sends a verification code to your email, you will be prompted for it in the terminal.
 
-1. Go to **[bambulab.com](https://bambulab.com)** and log in to your account
-2. Press **F12** to open Developer Tools
-3. Click the **Application** tab at the top
-4. In the left panel expand **Cookies** → click **`https://bambulab.com`**
-5. In the table on the right, find the row named **`token`**
-6. Click on it — the full value appears at the bottom of the panel (starts with `eyJ...`)
-7. Copy the full value
-
-**Option B — Internet Explorer / Edge Legacy:**
-
-1. Go to **[bambulab.com](https://bambulab.com)** and log in
-2. Press **F12** → click the **Debugger** tab
-3. Click the **Cookies** icon in the toolbar (or go to **Network** → select any request → **Cookies** tab)
-4. Find the cookie named **`token`** and copy its value
-
-**Option C — Handled automatically by the installer:**
-
-The `install.sh` script installs Chromium and runs `scripts/get_cloud_token.py`
-headlessly during setup. Enter your Bambu Lab email and password at the prompts —
-the script logs in, extracts the token from cookies, and writes it to the config.
-If Bambu sends a verification email, you will be prompted for the code in the terminal.
-
-To re-run the token extraction manually on the Pi:
+To re-run the token extraction manually (e.g. after the token expires):
 
 ```bash
+# On the Pi:
 sudo /opt/bambu-helper/.venv/bin/python /opt/bambu-helper/scripts/get_cloud_token.py
-```
 
-Or on a desktop PC (with Chrome installed):
-
-```bash
-pip install selenium
+# Or on any PC with Python:
+pip install requests
 python scripts/get_cloud_token.py
 ```
+
+The script handles all Bambu login flows automatically:
+
+| Flow | When it occurs |
+|------|---------------|
+| Direct login | Normal login — token returned immediately |
+| `verifyCode` | New device / unrecognised IP — Bambu emails a code; enter it at the prompt |
+| `tfaKey` | Similar email-based TFA flow via the TFA endpoint |
+| TOTP (`tfa`/`mfa`) | Authenticator app — enter the 6-digit code at the prompt |
+
+Once you have the token, paste it into the web portal under *Connection → Cloud Token*, or pass it to the script's `--output-file` flag and copy it to the config.
 
 ### Configuring Cloud Mode in the Portal
 
 1. Set *Connection Mode* → **Cloud**
-2. Enter your **Token** (the `eyJ...` string)
+2. Enter your **Token** (the long string from `get_cloud_token.py`)
 3. Select your **Region**: `us` (Americas/Europe) or `cn` (China)
 4. Enter your printer's **Serial Number**
 5. Click **Save & Reconnect**
 
 The portal extracts your user ID from the token automatically (JWT decode, no Bambu API call needed).
+
+> **Note:** Bambu tokens vary in format by account type. Microsoft / Hotmail accounts receive tokens starting with `AAAL...` rather than `eyJ...`. All formats are supported.
 
 **Troubleshooting Cloud:**
 - Token expired? Re-run `scripts/get_cloud_token.py` and update in the portal.
@@ -161,16 +150,27 @@ The portal extracts your user ID from the token automatically (JWT decode, no Ba
 
 ## Screen States
 
-| State | Shown When |
-|-------|-----------|
-| Splash | Boot (2 s) |
-| Connecting | MQTT not yet connected (spinner + attempt counter) |
-| Idle | Connected, printer not printing (nozzle + bed gauges) |
-| Printing | Print in progress (full 6-gauge dashboard) |
-| Paused | Print paused ("PAUSED" alert on info line) |
-| Finished | Print complete (completion animation + filename) |
-| Clock | After print finishes and timeout elapses |
-| Off | Display timeout |
+| State | Shown When | Layout |
+|-------|-----------|--------|
+| Splash | Boot (2 s) | Logo + printer name |
+| Connecting | MQTT not yet connected | Spinner + animated dots + attempt counter |
+| Idle | Connected, not printing | Nozzle + bed arc gauges |
+| Printing | Print in progress | Top: nozzle + bed arc gauges. Bottom: progress % (left) + ETA (right) |
+| Paused | `gcode_state = PAUSE` | Same as printing, ETA panel shows "PAUSED" |
+| Finished | Print complete | Expanding ring animation + checkmark + filename |
+| Clock | After finish timeout elapses | Large digital clock + date |
+| Off | Display off | Blank |
+
+---
+
+## Web Portal
+
+| URL | Description |
+|-----|-------------|
+| `/` | Configuration form |
+| `/status` | Live printer state as JSON |
+| `/preview` | Last rendered display frame as a 3× scaled PNG (720×720) — useful for verifying the display without physical hardware |
+| `/health` | Liveness check (no auth required) |
 
 ---
 

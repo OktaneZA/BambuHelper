@@ -86,10 +86,10 @@ The installer will:
 6. Create a system user `bambu-helper`
 7. Prompt you to choose **LAN** or **Cloud** connection mode:
    - **LAN:** enter printer IP and access code
-   - **Cloud:** the installer launches headless Chromium, logs into bambulab.com with your credentials, and extracts the session token automatically. If Bambu emails a verification code you will be prompted for it in the terminal.
+   - **Cloud:** the installer calls `scripts/get_cloud_token.py` which logs in to the Bambu Lab API directly (same endpoint as Bambu Studio). Enter your email and password at the prompts. If Bambu sends a verification code to your email, enter it when prompted. No browser required.
 8. Write `/etc/bambu-helper/config.json` with secure permissions (640, owned by `bambu-helper`)
 9. Install and start the systemd service
-10. Print the web portal URL
+10. Print the web portal URL (including a `/preview` link to view the current display frame)
 
 > **Reinstalling:** if `/etc/bambu-helper/config.json` already exists, all configuration prompts are skipped and your existing credentials are preserved. Delete the file first to reconfigure:
 > ```bash

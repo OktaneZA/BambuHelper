@@ -36,7 +36,7 @@ A faithful Python port of [Keralots/BambuHelper](https://github.com/Keralots/Bam
 │   └── bambu-helper-reboot.timer ← Optional weekly reboot timer
 │
 ├── scripts/
-│   └── get_cloud_token.py      ← Extract Bambu Cloud token via browser TLS
+│   └── get_cloud_token.py      ← Extract Bambu Cloud token via Bambu Lab API (requests)
 │
 ├── validate.py                 ← Post-install connectivity checker
 ├── install.sh                  ← Idempotent installer (run as root on Pi)
@@ -95,6 +95,15 @@ Key mappings:
 - PROGMEM bitmap arrays → Python `bytes` literals in `display.py`
 - `millis()` → `time.monotonic() * 1000`
 
+**SCREEN_PRINTING layout** (diverges from original 2×3 grid — redesigned for readability):
+- Top row (y≈30–136): 2 large arc gauges — **Nozzle** (cx=60) and **Bed** (cx=180), radius=50, arc_width=6, 20 px value font
+- Bottom-left panel (x=0–120, y=143–218): progress percentage in 34 px bold, "Progress" sub-label
+- Bottom-right panel (x=120–240, y=143–218): ETA in 22 px bold + "remaining" label; replaced by "PAUSED"/"FAILED" when applicable
+- Bottom bar (y=222–240): WiFi RSSI | Layer N/M | Speed level
+
+**Preview endpoint**: `GET /preview` on the portal returns the last rendered frame as a 3× scaled PNG (720×720).
+The `Renderer` is shared via module-level `_renderer_ref = [None]` in `main.py`; `portal.py` reads `renderer_ref[0]`.
+
 ## How to Run Tests
 
 ```bash
@@ -134,11 +143,17 @@ journalctl -u bambu-helper -f
 
 ## Web Config Portal
 
-```
-http://<pi-ip>:8080
-# Default credentials: admin / admin
-# Change portal_password in config after first login
-```
+Port is randomly assigned 4001–65000 at install time — shown in the install summary.
+
+| Route | Description |
+|-------|-------------|
+| `/` | Config form |
+| `/save` | Save + reconnect |
+| `/status` | Live printer state JSON |
+| `/preview` | Last display frame as 3× PNG (720×720) |
+| `/health` | Liveness check (no auth) |
+
+Auth: no password set → localhost-only (HTTP 403 from remote). Password set → HTTP Basic Auth, username `admin`.
 
 ## Current Status
 

@@ -19,7 +19,7 @@
 |----|-------------|
 | DISP-01 | 240×240 ST7789 SPI display at 250 ms refresh rate (~4 Hz) |
 | DISP-02 | Ten screen states matching original BambuHelper: SPLASH, CONNECTING_MQTT, IDLE, PRINTING, FINISHED, CLOCK, OFF (AP/WiFi states skipped — Pi handles WiFi natively) |
-| DISP-03 | SCREEN_PRINTING: 2×3 gauge grid — Progress Arc, Nozzle Temp, Bed Temp (top row); Part Fan, Aux Fan, Chamber Fan (bottom row) |
+| DISP-03 | SCREEN_PRINTING: 2-row layout. Top row: Nozzle Temp arc gauge (left, cx=60) + Bed Temp arc gauge (right, cx=180), radius=50, arc\_width=6. Bottom row split by vertical divider: left panel = large progress percentage (34 px bold); right panel = ETA countdown or PAUSED/FAILED status (22 px bold). |
 | DISP-04 | Arc gauges: 60°–300° sweep (240° span); track arc in `(12, 28, 28)`; fill arc proportional to value/max |
 | DISP-05 | LED progress bar: Y=0–5, full-width 236 px; fill = `progress/100 * 236`; colour set by speed level |
 | DISP-06 | Speed-level colour coding: 1=silent blue `(0,120,255)`, 2=standard green `(0,255,64)`, 3=sport orange `(255,160,0)`, 4=ludicrous red `(255,0,0)` |
@@ -31,8 +31,9 @@
 | DISP-12 | SCREEN_FINISHED: completion animation + filename + "Print Complete!" text |
 | DISP-13 | SCREEN_CLOCK: digital clock + date |
 | DISP-14 | Bottom bar: WiFi RSSI (dBm) | Layer N/M | speed level label |
-| DISP-15 | Info line (Y=190–216): ETA finish time when printing; "PAUSED" or "ERROR" alert when applicable |
+| DISP-15 | ETA displayed in printing screen bottom-right panel; "PAUSED" or "FAILED" replaces ETA text when gcode\_state matches |
 | DISP-16 | Background colour `(8, 12, 24)` (RGB565 `0x0861`); text white `(255,255,255)` |
+| DISP-17 | `GET /preview` portal endpoint returns the last rendered frame as a 3× scaled PNG (720×720); requires auth; returns HTTP 503 if no frame yet rendered |
 
 ## Networking
 
