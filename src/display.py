@@ -405,6 +405,7 @@ def _draw_arc_gauge(
     # (PIL arc sweeps CW, 150→30 CW = 240°, which matches the original bottom sweep.)
 
     # Fill arc proportional to value
+    value = float(value) if value is not None else 0.0
     ratio = min(1.0, max(0.0, value / max_value)) if max_value > 0 else 0.0
     fill_degrees = ratio * ARC_FULL_DEGREES
     if fill_degrees > 1:
