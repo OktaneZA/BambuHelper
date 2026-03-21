@@ -320,54 +320,18 @@ def _font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont:
 # Ported from display_gauges.cpp                                      #
 # ------------------------------------------------------------------ #
 
-# Gauge cell geometry for 2×3 grid (DISP-03)
-# Each cell is 80×73 px for top row, 80×67 px for bottom row
-_GAUGE_CELLS = {
-    #         (cx, cy, radius)
-    "progress":  (40,  72, 35),
-    "nozzle":    (120, 72, 35),
-    "bed":       (200, 72, 35),
-    "fan_part":  (40, 145, 30),
-    "fan_aux":   (120, 145, 30),
-    "fan_ch":    (200, 145, 30),
-}
-
 # Max values for arc fill ratio
 _GAUGE_MAX = {
     "progress": 100,
     "nozzle": 300,
     "bed": 120,
-    "fan_part": 100,
-    "fan_aux": 100,
-    "fan_ch": 100,
 }
 
-# Default colours per gauge (user-configurable in future)
+# Colours per gauge
 _GAUGE_COLORS = {
     "progress": (0, 200, 255),
     "nozzle":   (255, 120, 0),
     "bed":      (255, 60, 60),
-    "fan_part": (60, 200, 255),
-    "fan_aux":  (60, 180, 255),
-    "fan_ch":   (60, 160, 255),
-}
-
-_GAUGE_LABELS = {
-    "progress": "Progress",
-    "nozzle":   "Nozzle",
-    "bed":      "Bed",
-    "fan_part": "Part Fan",
-    "fan_aux":  "Aux Fan",
-    "fan_ch":   "Chamber",
-}
-
-_GAUGE_ICONS = {
-    "progress": None,
-    "nozzle":   ICON_NOZZLE,
-    "bed":      ICON_BED,
-    "fan_part": ICON_FAN,
-    "fan_aux":  ICON_FAN,
-    "fan_ch":   ICON_FAN,
 }
 
 
@@ -381,6 +345,7 @@ def _draw_arc_gauge(
     icon: Optional[bytes] = None,
     font_small: Optional[ImageFont.FreeTypeFont] = None,
     font_value: Optional[ImageFont.FreeTypeFont] = None,
+    arc_width: int = 4,
 ) -> None:
     """Draw a single arc gauge at centre (cx, cy).
 
@@ -396,13 +361,8 @@ def _draw_arc_gauge(
     bbox = [cx - r, cy - r, cx + r, cy + r]
 
     # Track arc (background)
-    draw.arc(bbox, start=150, end=30, fill=TRACK_COLOR, width=4)
-    # Note: PIL draws CW from start to end, so start=150→end=30 wraps the
-    # short way; we need start=150, end=150+240=390 → use 30 with PIL going
-    # the long way. PIL always draws the shortest arc, so we must chain two:
-    # Actually for PIL, arc(start, end) goes CW from start to end.
-    # 150 CW to 30 = 240° CW. ✓
-    # (PIL arc sweeps CW, 150→30 CW = 240°, which matches the original bottom sweep.)
+    draw.arc(bbox, start=150, end=30, fill=TRACK_COLOR, width=arc_width)
+    # PIL arc sweeps CW: 150→30 CW = 240°, matching the original bottom sweep.
 
     # Fill arc proportional to value
     value = float(value) if value is not None else 0.0
@@ -410,7 +370,7 @@ def _draw_arc_gauge(
     fill_degrees = ratio * ARC_FULL_DEGREES
     if fill_degrees > 1:
         fill_end_angle = (150 + fill_degrees) % 360
-        draw.arc(bbox, start=150, end=fill_end_angle, fill=color, width=4)
+        draw.arc(bbox, start=150, end=fill_end_angle, fill=color, width=arc_width)
 
     # Center value text
     display_val = f"{value:.0f}"
@@ -703,58 +663,108 @@ class Renderer:
         self._draw_bottom_bar(draw, state)
 
     def _render_printing(self, draw: ImageDraw.ImageDraw, state: dict[str, Any]) -> None:
-        """Full printing dashboard: 6-gauge grid. (DISP-03)"""
+        """Printing screen: 2 large arc gauges (nozzle + bed) top, progress + ETA bottom."""
         speed = state.get("speed_level", 2)
         bar_color = SPEED_COLORS.get(speed, SPEED_COLORS[2])
 
         # LED progress bar at top (DISP-05)
-        progress = state.get("progress", 0)
+        progress = float(state.get("progress", 0) or 0)
         fill_w = int(progress / 100 * 236)
         if fill_w > 0:
             draw.rectangle([2, 1, 2 + fill_w, PROGRESS_BAR_HEIGHT], fill=bar_color)
-            # Glowing edge: 1px brighter top line
             glow = tuple(min(255, c + 60) for c in bar_color)
             draw.line([(2, 1), (2 + fill_w, 1)], fill=glow, width=1)
 
-        # Header (Y=7-25)
+        # Header: task name + gcode badge (y=7-25)
         self._draw_header(draw, state)
 
-        # 2×3 gauge grid (Y=30-176) (DISP-03)
-        f_small = _font(8)
-        f_value = _font(11, bold=True)
+        # ── Top row: nozzle + bed arc gauges (y=30-136) ───────────────────
+        f_gauge_label = _font(12)
+        f_gauge_value = _font(20, bold=True)
+        _GAUGE_CY = 86
+        _GAUGE_R = 50
 
-        gauges = [
-            ("progress", state.get("progress", 0),    "%",  None),
-            ("nozzle",   state.get("nozzle_temp", 0), "°",  ICON_NOZZLE),
-            ("bed",      state.get("bed_temp", 0),    "°",  ICON_BED),
-            ("fan_part", state.get("cooling_fan_pct", 0), "%", ICON_FAN),
-            ("fan_aux",  state.get("aux_fan_pct", 0),     "%", ICON_FAN),
-            ("fan_ch",   state.get("chamber_fan_pct", 0), "%", ICON_FAN),
-        ]
+        _draw_arc_gauge(
+            draw, cx=60, cy=_GAUGE_CY, radius=_GAUGE_R,
+            value=state.get("nozzle_temp", 0),
+            max_value=_GAUGE_MAX["nozzle"],
+            color=_GAUGE_COLORS["nozzle"],
+            label="Nozzle", unit="°",
+            icon=ICON_NOZZLE,
+            font_small=f_gauge_label, font_value=f_gauge_value,
+            arc_width=6,
+        )
+        _draw_arc_gauge(
+            draw, cx=180, cy=_GAUGE_CY, radius=_GAUGE_R,
+            value=state.get("bed_temp", 0),
+            max_value=_GAUGE_MAX["bed"],
+            color=_GAUGE_COLORS["bed"],
+            label="Bed", unit="°",
+            icon=ICON_BED,
+            font_small=f_gauge_label, font_value=f_gauge_value,
+            arc_width=6,
+        )
 
-        cells = [
-            (40, 72),  (120, 72),  (200, 72),
-            (40, 148), (120, 148), (200, 148),
-        ]
+        # Horizontal divider between rows
+        draw.line([(4, 140), (236, 140)], fill=TRACK_COLOR, width=1)
 
-        for i, (key, value, unit, icon) in enumerate(gauges):
-            cx, cy = cells[i]
-            _draw_arc_gauge(
-                draw, cx=cx, cy=cy, radius=32,
-                value=value,
-                max_value=_GAUGE_MAX[key],
-                color=_GAUGE_COLORS[key],
-                label=_GAUGE_LABELS[key],
-                unit=unit,
-                icon=icon,
-                font_small=f_small,
-                font_value=f_value,
+        # ── Bottom row: progress (left) | ETA (right) (y=143-218) ─────────
+        # Vertical divider between the two panels
+        draw.line([(120, 142), (120, 218)], fill=TRACK_COLOR, width=1)
+
+        # Left panel: big progress percentage
+        f_prog = _font(34, bold=True)
+        f_panel_sub = _font(10)
+        prog_str = f"{int(progress)}%"
+        try:
+            pw = draw.textbbox((0, 0), prog_str, font=f_prog)[2]
+        except AttributeError:
+            pw, _ = draw.textsize(prog_str, font=f_prog)  # type: ignore[attr-defined]
+        draw.text((60 - pw // 2, 150), prog_str, font=f_prog, fill=_GAUGE_COLORS["progress"])
+        try:
+            plw = draw.textbbox((0, 0), "Progress", font=f_panel_sub)[2]
+        except AttributeError:
+            plw, _ = draw.textsize("Progress", font=f_panel_sub)  # type: ignore[attr-defined]
+        draw.text((60 - plw // 2, 200), "Progress", font=f_panel_sub, fill=DIM_COLOR)
+
+        # Right panel: ETA (or PAUSED / FAILED status)
+        gcode = state.get("gcode_state", "")
+        f_eta = _font(22, bold=True)
+        if gcode == "PAUSE":
+            msg = "PAUSED"
+            fm = _font(16, bold=True)
+            try:
+                mw = draw.textbbox((0, 0), msg, font=fm)[2]
+            except AttributeError:
+                mw, _ = draw.textsize(msg, font=fm)  # type: ignore[attr-defined]
+            draw.text((180 - mw // 2, 167), msg, font=fm, fill=SPEED_COLORS[3])
+        elif gcode == "FAILED":
+            msg = "FAILED"
+            fm = _font(16, bold=True)
+            try:
+                mw = draw.textbbox((0, 0), msg, font=fm)[2]
+            except AttributeError:
+                mw, _ = draw.textsize(msg, font=fm)  # type: ignore[attr-defined]
+            draw.text((180 - mw // 2, 167), msg, font=fm, fill=SPEED_COLORS[4])
+        else:
+            mins = float(state.get("remaining_minutes", 0) or 0)
+            eta_str = "--" if mins <= 0 else (
+                f"{int(mins) // 60}h {int(mins) % 60:02d}m" if mins >= 60
+                else f"{int(mins)}m"
             )
+            try:
+                ew = draw.textbbox((0, 0), eta_str, font=f_eta)[2]
+            except AttributeError:
+                ew, _ = draw.textsize(eta_str, font=f_eta)  # type: ignore[attr-defined]
+            draw.text((180 - ew // 2, 153), eta_str, font=f_eta, fill=TEXT_COLOR)
+            _draw_bitmap(draw, 165, 195, ICON_CLOCK, 16, 16, DIM_COLOR)
+            try:
+                rlw = draw.textbbox((0, 0), "remaining", font=f_panel_sub)[2]
+            except AttributeError:
+                rlw, _ = draw.textsize("remaining", font=f_panel_sub)  # type: ignore[attr-defined]
+            draw.text((180 - rlw // 2, 197), "remaining", font=f_panel_sub, fill=DIM_COLOR)
 
-        # Info line (Y=190-216) (DISP-15)
-        self._draw_info_line(draw, state)
-
-        # Bottom bar (Y=218-240) (DISP-14)
+        # Bottom bar: WiFi | Layer | Speed (y=222-240)
         self._draw_bottom_bar(draw, state)
 
     def _draw_header(self, draw: ImageDraw.ImageDraw, state: dict[str, Any]) -> None:
@@ -776,23 +786,6 @@ class Renderer:
         except AttributeError:
             bw, _ = draw.textsize(badge, font=f)  # type: ignore[attr-defined]
         draw.text((WIDTH - bw - 4, 8), badge, font=f, fill=badge_color)
-
-    def _draw_info_line(self, draw: ImageDraw.ImageDraw, state: dict[str, Any]) -> None:
-        """ETA or PAUSED/ERROR alert at Y=190."""
-        f = _font(11)
-        gcode = state.get("gcode_state", "")
-
-        if gcode == "PAUSE":
-            draw.text((WIDTH // 2 - 30, 192), "⏸ PAUSED", font=f, fill=SPEED_COLORS[3])
-        elif gcode == "FAILED":
-            draw.text((WIDTH // 2 - 26, 192), "✖ FAILED", font=f, fill=SPEED_COLORS[4])
-        else:
-            mins = state.get("remaining_minutes", 0)
-            if mins > 0:
-                h, m = divmod(mins, 60)
-                eta = f"ETA {h}h {m:02d}m" if h else f"ETA {m}m"
-                _draw_bitmap(draw, 4, 193, ICON_CLOCK, 16, 16, DIM_COLOR)
-                draw.text((24, 192), eta, font=f, fill=TEXT_COLOR)
 
     def _draw_bottom_bar(self, draw: ImageDraw.ImageDraw, state: dict[str, Any]) -> None:
         """WiFi RSSI | Layer N/M | Speed level at Y=220. (DISP-14)"""
