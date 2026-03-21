@@ -99,15 +99,24 @@ def get_token(api_base: str, email: str, password: str) -> str:
         print("\nBambu Lab has sent a verification code to your email.")
         print("Check your inbox (and spam folder) for an email from Bambu Lab.")
         code = input("Enter verification code: ").strip()
+        # Try with password + code first, fall back to account + code only
         try:
             resp = _post(session, api_base + _LOGIN_PATH, {
-                "account": email,
-                "code":    code,
+                "account":  email,
+                "password": password,
+                "code":     code,
             })
+            _dump_response("verifyCode response (with password)", resp)
+            token = resp.get("accessToken") or resp.get("token")
+            if not token:
+                resp = _post(session, api_base + _LOGIN_PATH, {
+                    "account": email,
+                    "code":    code,
+                })
+                _dump_response("verifyCode response (without password)", resp)
+                token = resp.get("accessToken") or resp.get("token")
         except requests.RequestException as exc:
             raise RuntimeError(f"Verification failed: {exc}") from exc
-        _dump_response("verifyCode response", resp)
-        token = resp.get("accessToken") or resp.get("token")
 
     # ── tfaKey: request email code then verify ────────────────────────────
     elif tfa_key and not token:
