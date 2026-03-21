@@ -576,6 +576,7 @@ class Renderer:
         self._display = display
         self._frame = 0
         self._anim_start: Optional[float] = None
+        self._last_frame: Optional[Image.Image] = None
 
     def render(
         self,
@@ -609,8 +610,20 @@ class Renderer:
         else:
             self._render_connecting(draw, error_count)
 
+        self._last_frame = image
         self._display.show_image(image)
         self._frame += 1
+
+    def get_preview_png(self) -> Optional[bytes]:
+        """Return the last rendered frame as PNG bytes, or None if not yet rendered."""
+        if self._last_frame is None:
+            return None
+        import io
+        buf = io.BytesIO()
+        # Scale up 3x so it's readable in a browser (240×240 → 720×720)
+        img = self._last_frame.resize((WIDTH * 3, HEIGHT * 3), Image.NEAREST)
+        img.save(buf, format="PNG")
+        return buf.getvalue()
 
     def _render_splash(self, draw: ImageDraw.ImageDraw, config: dict[str, Any]) -> None:
         """Boot splash screen with version and printer name."""

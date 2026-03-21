@@ -14,7 +14,7 @@ replaced if the user enters a new value. (SEC-01)
 import functools
 import logging
 import threading
-from typing import Any
+from typing import Any, Optional
 
 from flask import Flask, Response, jsonify, redirect, render_template, request, url_for
 
@@ -40,6 +40,7 @@ def create_app(
     shared_state: dict[str, Any],
     lock: threading.Lock,
     restart_event: threading.Event,
+    renderer_ref: Optional[list] = None,
 ) -> Flask:
     """Create and return the Flask app.
 
@@ -48,6 +49,7 @@ def create_app(
         shared_state: Shared printer state dict (read-only in portal).
         lock: Lock protecting *shared_state*.
         restart_event: Set this event to trigger MQTT reconnect after save.
+        renderer_ref: Single-element list holding the Renderer instance, or None.
     """
     app = Flask(__name__, template_folder="templates")
     app.secret_key = "bambu-helper-portal"
@@ -174,5 +176,20 @@ def create_app(
     def health() -> Response:
         """Liveness check — no auth required."""
         return jsonify({"ok": True})
+
+    @app.route("/preview", methods=["GET"])
+    @require_auth
+    def preview() -> Response:
+        """Return the last rendered display frame as a 3x-scaled PNG (720×720).
+
+        Useful for verifying display output without physical hardware access.
+        """
+        renderer = renderer_ref[0] if renderer_ref is not None else None
+        if renderer is None:
+            return Response("Renderer not initialised yet", 503)
+        png_bytes = renderer.get_preview_png()
+        if png_bytes is None:
+            return Response("No frame rendered yet", 503)
+        return Response(png_bytes, mimetype="image/png")
 
     return app

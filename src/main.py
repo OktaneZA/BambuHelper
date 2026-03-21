@@ -57,6 +57,9 @@ _screen_state: str = SCREEN_SPLASH
 _shutdown_event = threading.Event()
 _restart_event = threading.Event()
 
+# Shared renderer reference so the portal can serve a preview image (DISP-17)
+_renderer_ref: list = [None]
+
 # ------------------------------------------------------------------ #
 # Signal handler (ARCH-07)                                             #
 # ------------------------------------------------------------------ #
@@ -151,6 +154,7 @@ def _portal_thread_func(config_path: str) -> None:
         shared_state=_printer_state,
         lock=_lock,
         restart_event=_restart_event,
+        renderer_ref=_renderer_ref,
     )
 
     logger.info("Web portal starting on port %d", port)
@@ -212,6 +216,7 @@ _RENDER_INTERVAL_S = 0.250  # 250 ms = ~4 Hz (DISP-01)
 def _render_loop(config_path: str, display: ST7789) -> None:
     """Main render loop — reads shared state, drives screen. (ARCH-02)"""
     renderer = Renderer(display)
+    _renderer_ref[0] = renderer
     prev_epoch = -1
     prev_screen = SCREEN_SPLASH
     finish_time: list[float] = [0.0]
