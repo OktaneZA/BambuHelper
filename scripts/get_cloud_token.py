@@ -58,6 +58,15 @@ def _post(session: requests.Session, url: str, body: dict) -> dict:
     return resp.json()
 
 
+def _dump_response(label: str, resp: dict) -> None:
+    """Print all fields in the API response for debugging."""
+    print(f"\n── {label} ──")
+    for key, value in resp.items():
+        # Show full value for all fields so we can diagnose token format
+        print(f"  {key}: {value!r}")
+    print()
+
+
 def get_token(api_base: str, email: str, password: str) -> str:
     """Log in to the Bambu API and return the JWT accessToken.
 
@@ -79,6 +88,8 @@ def get_token(api_base: str, email: str, password: str) -> str:
     tfa_key    = resp.get("tfaKey", "")
     token      = resp.get("accessToken") or resp.get("token")
 
+    _dump_response("Initial login response", resp)
+
     # ── Already have token ────────────────────────────────────────────────
     if token:
         return token
@@ -96,6 +107,7 @@ def get_token(api_base: str, email: str, password: str) -> str:
             })
         except requests.RequestException as exc:
             raise RuntimeError(f"Verification failed: {exc}") from exc
+        _dump_response("verifyCode response", resp)
         token = resp.get("accessToken") or resp.get("token")
 
     # ── tfaKey: request email code then verify ────────────────────────────
