@@ -101,9 +101,8 @@ def get_token(api_base: str, email: str, password: str) -> str:
         code = input("Enter verification code: ").strip()
         try:
             resp = _post(session, api_base + _LOGIN_PATH, {
-                "account":    email,
-                "password":   password,
-                "verifyCode": code,
+                "account": email,
+                "code":    code,
             })
         except requests.RequestException as exc:
             raise RuntimeError(f"Verification failed: {exc}") from exc
