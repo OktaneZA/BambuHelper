@@ -227,6 +227,7 @@ class BambuClient:
         client.on_connect = self._on_connect
         client.on_disconnect = self._on_disconnect
         client.on_message = self._on_message
+        client.on_log = self._on_log
 
         # TLS setup
         if self._is_cloud:
@@ -374,6 +375,10 @@ class BambuClient:
             logger.debug("Published pushall #%d to %s", self._pushall_seq, topic)
         except Exception as exc:  # noqa: BLE001
             logger.warning("Failed to publish pushall: %s", exc)
+
+    def _on_log(self, client: mqtt.Client, userdata: Any, level: int, buf: str) -> None:
+        """Log all paho internal messages at DEBUG level."""
+        logger.debug("paho [%d]: %s", level, buf)
 
     def _mark_disconnected(self) -> None:
         """Update shared state to reflect MQTT disconnection."""
