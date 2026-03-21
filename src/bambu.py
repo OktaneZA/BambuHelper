@@ -377,8 +377,8 @@ class BambuClient:
             logger.warning("Failed to publish pushall: %s", exc)
 
     def _on_log(self, client: mqtt.Client, userdata: Any, level: int, buf: str) -> None:
-        """Log all paho internal messages at DEBUG level."""
-        logger.debug("paho [%d]: %s", level, buf)
+        """Log all paho internal messages — temporarily at WARNING to bypass level filter."""
+        logger.warning("paho: %s", buf)
 
     def _mark_disconnected(self) -> None:
         """Update shared state to reflect MQTT disconnection."""
