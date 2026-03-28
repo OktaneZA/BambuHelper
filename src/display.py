@@ -112,28 +112,33 @@ class DisplayProfile(NamedTuple):
     madctl: int       # MADCTL register value (0x36) — controls orientation
     col_end_hi: int   # CASET column-end high byte  (= width  - 1)
     col_end_lo: int   # CASET column-end low byte
-    row_end_hi: int   # RASET row-end high byte     (= height - 1)
+    row_end_hi: int   # RASET row-end high byte     (= row_start + height - 1)
     row_end_lo: int   # RASET row-end low byte
-    vrh_set: int = 0x12  # VRH register (0xC3) — output voltage range
+    vrh_set: int = 0x12   # VRH register (0xC3) — output voltage range
+    row_start_lo: int = 0x00  # RASET row-start low byte; 0x50 (80) for 240×240 modules
+                              # whose ST7789 chip has a 320-row framebuffer offset
 
 
 DISPLAY_PROFILES: dict[str, DisplayProfile] = {
-    # 1.54" — 240×240 portrait, standard orientation
+    # 1.54" — 240×240 portrait. ST7789 chip has 320 rows internally; LCD is wired
+    # starting at chip row 80 (0x50). RASET must be 0x0050–0x013F (80–319).
     "waveshare_1in54": DisplayProfile(
         width=240, height=240,
         madctl=0x00,
         col_end_hi=0x00, col_end_lo=0xEF,   # columns 0–239
-        row_end_hi=0x00, row_end_lo=0xEF,   # rows    0–239
+        row_end_hi=0x01, row_end_lo=0x3F,   # rows 80–319 (end = 0x013F)
+        row_start_lo=0x50,                   # start at chip row 80
     ),
-    # 1.3" — same resolution as 1.54"; VRH differs per Waveshare datasheet
+    # 1.3" — same chip wiring as 1.54"; VRH differs per Waveshare datasheet
     "waveshare_1in3": DisplayProfile(
         width=240, height=240,
         madctl=0x00,
         col_end_hi=0x00, col_end_lo=0xEF,
-        row_end_hi=0x00, row_end_lo=0xEF,
+        row_end_hi=0x01, row_end_lo=0x3F,   # rows 80–319
         vrh_set=0x0B,
+        row_start_lo=0x50,
     ),
-    # 2.0" — 320×240 landscape; MADCTL 0x70 = MX|MV|MH swaps axes
+    # 2.0" — 320×240 landscape; MADCTL 0x70 = MX|MV|MH swaps axes; no row offset
     "waveshare_2in0": DisplayProfile(
         width=320, height=240,
         madctl=0x70,
@@ -549,7 +554,7 @@ class ST7789:
         self._cmd(0x36); self._data(bytes([p.madctl]))                       # MADCTL (model-specific)
         self._cmd(0x2A); self._data(bytes([0x00, 0x00,                       # CASET
                                            p.col_end_hi, p.col_end_lo]))
-        self._cmd(0x2B); self._data(bytes([0x00, 0x00,                       # RASET
+        self._cmd(0x2B); self._data(bytes([0x00, p.row_start_lo,             # RASET
                                            p.row_end_hi, p.row_end_lo]))
         self._cmd(0x29); time.sleep(0.05)                                    # Display on
 
@@ -563,7 +568,7 @@ class ST7789:
         self._cmd(0x2A)
         self._data(bytes([0x00, 0x00, p.col_end_hi, p.col_end_lo]))
         self._cmd(0x2B)
-        self._data(bytes([0x00, 0x00, p.row_end_hi, p.row_end_lo]))
+        self._data(bytes([0x00, p.row_start_lo, p.row_end_hi, p.row_end_lo]))
         self._cmd(0x2C)
         import numpy as np
         arr = np.frombuffer(
