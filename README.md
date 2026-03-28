@@ -2,7 +2,7 @@
 
 > **Python port of [Keralots/BambuHelper](https://github.com/Keralots/BambuHelper) — all credit for the original design, icons, and display logic goes to [@Keralots](https://github.com/Keralots).**
 
-A Python port of [BambuHelper](https://github.com/Keralots/BambuHelper) for the **Raspberry Pi Zero 2 W** with a **Waveshare 1.54" LCD** (240×240 ST7789). Displays live Bambu Lab 3D printer status — nozzle and bed temperatures, print progress, ETA, layer count, and speed — on a 240×240 display. Also serves a live display preview image via the web portal at `/preview`.
+A Python port of [BambuHelper](https://github.com/Keralots/BambuHelper) for the **Raspberry Pi Zero 2 W** with a **Waveshare ST7789 LCD** (240×240 or 320×240). Displays live Bambu Lab 3D printer status — nozzle and bed temperatures, print progress, ETA, layer count, and speed. Also serves a live display preview image via the web portal at `/preview`.
 
 ![Screen states: connecting → printing dashboard → finished](.github/screenshot.png)
 
@@ -13,7 +13,9 @@ A Python port of [BambuHelper](https://github.com/Keralots/BambuHelper) for the 
 | Component | Details |
 |-----------|---------|
 | Raspberry Pi | Zero 2 W (64-bit, Raspberry Pi OS Bookworm Lite) |
-| Display | Waveshare 1.54" LCD Module — 240×240 ST7789 SPI |
+| Display (default) | Waveshare 1.54" LCD Module — 240×240 ST7789 SPI (`waveshare_1in54`) |
+| Display (alt) | Waveshare 2.0" LCD Module — 320×240 ST7789 SPI (`waveshare_2in0`) |
+| Display (alt) | Waveshare 1.3" LCD Module — 240×240 ST7789 SPI (`waveshare_1in3`) |
 | Printer | Any Bambu Lab printer (X1, X1C, X1E, P1P, P1S, A1, A1 Mini) |
 
 ---
@@ -31,6 +33,7 @@ A Python port of [BambuHelper](https://github.com/Keralots/BambuHelper) for the 
 | RST | GPIO 27 | Pin 13 |
 | BL | GPIO 18 | Pin 12 |
 
+> The wiring is **identical for all three supported display models** — only the `display_model` config value differs.
 > **Enable SPI** on the Pi: `sudo raspi-config` → Interface Options → SPI → Enable.
 > The installer (`install.sh`) does this automatically.
 
@@ -169,7 +172,7 @@ The portal extracts your user ID from the token automatically (JWT decode, no Ba
 |-----|-------------|
 | `/` | Configuration form |
 | `/status` | Live printer state as JSON |
-| `/preview` | Last rendered display frame as a 3× scaled PNG (720×720) — useful for verifying the display without physical hardware |
+| `/preview` | Last rendered display frame as a 3× scaled PNG (720×720 for 240×240, 960×720 for 320×240) — useful for verifying the display without physical hardware |
 | `/health` | Liveness check (no auth required) |
 
 ---

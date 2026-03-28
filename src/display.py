@@ -3,30 +3,34 @@
 Faithful Python/PIL port of display_ui.cpp, display_gauges.cpp,
 display_anim.cpp, and icons.h from Keralots/BambuHelper.
 
-The Waveshare 1.54" LCD module (240×240, ST7789) is driven directly via
-spidev + RPi.GPIO using the full Waveshare init sequence.
-All rendering is done into a PIL Image which is then pushed to the display.
+Supported display models (DISP-01, CFG-06):
+  waveshare_1in54 — 240×240 ST7789 (default)
+  waveshare_1in3  — 240×240 ST7789 (alternate VRH register)
+  waveshare_2in0  — 320×240 ST7789 (landscape, MADCTL 0x70)
+
+All three models share the same SPI wiring and init sequence; only the
+MADCTL orientation byte, column/row address window, and VRH register differ.
+The model is selected via config.json "display_model" and passed to
+ST7789(model=...) on startup.
 
 Screen states (DISP-02):
   SCREEN_SPLASH         — boot splash
   SCREEN_CONNECTING     — MQTT connecting (spinner + dots)
   SCREEN_IDLE           — connected, not printing (nozzle + bed gauges)
-  SCREEN_PRINTING       — printing (full 6-gauge dashboard)
+  SCREEN_PRINTING       — printing (2 gauges top, progress + ETA bottom)
   SCREEN_FINISHED       — print complete (completion animation)
   SCREEN_CLOCK          — digital clock
   SCREEN_OFF            — blank screen
 
 PIL angle convention differs from TFT_eSPI: PIL 0° = 3 o'clock, goes CW.
 The original C++ uses start=60°, end=300° for a 240° CCW arc.
-We map: PIL start = 90 + (360 - 300) = 150, PIL end = 90 + (360 - 60) = 390
-so the arc sweeps the bottom 240° matching the original gauge appearance.
+We map: PIL start=150, end=150+240=390 (→30 mod 360) CW sweep.
 """
 
 import logging
-import math
 import os
 import time
-from typing import Any, Optional
+from typing import Any, NamedTuple, Optional
 
 from PIL import Image, ImageDraw, ImageFont
 
@@ -72,7 +76,9 @@ SPEED_COLORS = {
 }
 
 # ------------------------------------------------------------------ #
-# Display dimensions                                                   #
+# Display dimensions — module-level defaults for the 240×240 profile. #
+# Kept for backward compatibility with tests that import WIDTH/HEIGHT. #
+# Renderer instances derive actual dimensions from self._w / self._h. #
 # ------------------------------------------------------------------ #
 
 WIDTH = 240
@@ -83,16 +89,58 @@ PROGRESS_BAR_HEIGHT = 5
 # Arc gauge parameters (DISP-04)                                       #
 # PIL arc: angles in degrees, 0° = 3 o'clock, CW.                    #
 # Original C++: 60°–300° CCW sweep = bottom 240° of circle.          #
-# PIL equivalent: start=150°, end=30° (+360 wrap → end=390° = 30°+360) #
+# PIL equivalent: start=150°, end=30° (150 CW to 30 = 240°)          #
 # ------------------------------------------------------------------ #
 
-ARC_PIL_START = 150   # corresponds to C++ arc start at 60° CCW
-ARC_PIL_END = 30      # corresponds to C++ arc end at 300° CCW
-                      # (wrapped: PIL draws CW so end = 30 means 360-30=330 relative from 0)
-
-# We'll compute: start=150, end = 150 + 240 = 390 (mod via PIL wrapping)
+ARC_PIL_START = 150
+ARC_PIL_END = 30
 ARC_FULL_DEGREES = 240
 
+# ------------------------------------------------------------------ #
+# Display profiles (CFG-06)                                            #
+#                                                                      #
+# Hardware-specific SPI init parameters for each supported Waveshare  #
+# ST7789 module. Selected via config.json "display_model".            #
+# ------------------------------------------------------------------ #
+
+
+class DisplayProfile(NamedTuple):
+    """Hardware parameters for a Waveshare ST7789 display module."""
+
+    width: int        # Horizontal resolution in pixels
+    height: int       # Vertical resolution in pixels
+    madctl: int       # MADCTL register value (0x36) — controls orientation
+    col_end_hi: int   # CASET column-end high byte  (= width  - 1)
+    col_end_lo: int   # CASET column-end low byte
+    row_end_hi: int   # RASET row-end high byte     (= height - 1)
+    row_end_lo: int   # RASET row-end low byte
+    vrh_set: int = 0x12  # VRH register (0xC3) — output voltage range
+
+
+DISPLAY_PROFILES: dict[str, DisplayProfile] = {
+    # 1.54" — 240×240 portrait, standard orientation
+    "waveshare_1in54": DisplayProfile(
+        width=240, height=240,
+        madctl=0x00,
+        col_end_hi=0x00, col_end_lo=0xEF,   # columns 0–239
+        row_end_hi=0x00, row_end_lo=0xEF,   # rows    0–239
+    ),
+    # 1.3" — same resolution as 1.54"; VRH differs per Waveshare datasheet
+    "waveshare_1in3": DisplayProfile(
+        width=240, height=240,
+        madctl=0x00,
+        col_end_hi=0x00, col_end_lo=0xEF,
+        row_end_hi=0x00, row_end_lo=0xEF,
+        vrh_set=0x0B,
+    ),
+    # 2.0" — 320×240 landscape; MADCTL 0x70 = MX|MV|MH swaps axes
+    "waveshare_2in0": DisplayProfile(
+        width=320, height=240,
+        madctl=0x70,
+        col_end_hi=0x01, col_end_lo=0x3F,   # columns 0–319
+        row_end_hi=0x00, row_end_lo=0xEF,   # rows    0–239
+    ),
+}
 
 # ------------------------------------------------------------------ #
 # Icons (from icons.h) — 16×16 monochrome bitmaps (DISP-07)          #
@@ -304,7 +352,6 @@ def _font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont:
     """Load a TTF font at *size*, caching the result."""
     key = (size, bold)
     if key not in _FONT_CACHE:
-        # Try to load a bundled font; fall back to PIL default
         name = "RobotoMono-Bold.ttf" if bold else "RobotoMono-Regular.ttf"
         path = os.path.join(_FONTS_DIR, name)
         try:
@@ -320,16 +367,14 @@ def _font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont:
 # Ported from display_gauges.cpp                                      #
 # ------------------------------------------------------------------ #
 
-# Max values for arc fill ratio
+# Gauge max values for arc fill ratio
 _GAUGE_MAX = {
-    "progress": 100,
     "nozzle": 300,
     "bed": 120,
 }
 
-# Colours per gauge
+# Default colours per gauge
 _GAUGE_COLORS = {
-    "progress": (0, 200, 255),
     "nozzle":   (255, 120, 0),
     "bed":      (255, 60, 60),
 }
@@ -349,7 +394,7 @@ def _draw_arc_gauge(
 ) -> None:
     """Draw a single arc gauge at centre (cx, cy).
 
-    Arc spans 240° (from 150° to 390° in PIL CCW convention).
+    Arc spans 240° (from 150° to 390° in PIL CW convention).
     Ported from display_gauges.cpp drawGauge().
     """
     if font_small is None:
@@ -360,9 +405,8 @@ def _draw_arc_gauge(
     r = radius
     bbox = [cx - r, cy - r, cx + r, cy + r]
 
-    # Track arc (background)
+    # Track arc (background) — 150° CW to 30° = 240° sweep
     draw.arc(bbox, start=150, end=30, fill=TRACK_COLOR, width=arc_width)
-    # PIL arc sweeps CW: 150→30 CW = 240°, matching the original bottom sweep.
 
     # Fill arc proportional to value
     value = float(value) if value is not None else 0.0
@@ -396,17 +440,17 @@ def _draw_arc_gauge(
 
 
 # ------------------------------------------------------------------ #
-# ST7789 SPI driver — Pimoroni st7789 library wrapper                 #
+# ST7789 SPI driver                                                    #
 # ------------------------------------------------------------------ #
 
 class ST7789:
-    """Raw SPI driver for the Waveshare 1.54" 240×240 ST7789 LCD.
+    """Raw SPI driver for Waveshare ST7789 LCD modules (240×240 and 320×240).
 
     Drives the display directly via spidev + RPi.GPIO — no Pimoroni library required.
-    Uses the full Waveshare init sequence (PORCTRL, GCTRL, VCOMS, gamma, etc.) which
-    is required to configure the LCD voltage / gamma circuits correctly.
+    The hardware profile (resolution, MADCTL orientation, CASET/RASET window) is
+    selected via the *model* parameter using the DISPLAY_PROFILES registry (CFG-06).
 
-    GPIO pin mapping (BCM numbering):
+    GPIO pin mapping (BCM numbering) — identical for all supported models:
       DC  = GPIO 25  (physical pin 22)
       RST = GPIO 27  (physical pin 13)
       BL  = GPIO 18  (physical pin 12) — PWM backlight
@@ -424,10 +468,23 @@ class ST7789:
 
     _CHUNK = 4096
 
-    def __init__(self, brightness: int = 100) -> None:
-        """Initialise display via direct spidev + RPi.GPIO."""
+    def __init__(self, brightness: int = 100, model: str = "waveshare_1in54") -> None:
+        """Initialise display via direct spidev + RPi.GPIO.
+
+        Args:
+            brightness: Backlight level 0–255.
+            model: Display hardware profile key from DISPLAY_PROFILES (CFG-06).
+        """
         import spidev
         import RPi.GPIO as GPIO
+
+        self._profile = DISPLAY_PROFILES.get(model)
+        if self._profile is None:
+            raise ValueError(
+                f"Unknown display model {model!r}. Valid models: {sorted(DISPLAY_PROFILES)}"
+            )
+        self.width: int = self._profile.width
+        self.height: int = self._profile.height
 
         self._GPIO = GPIO
         GPIO.setmode(GPIO.BCM)
@@ -446,7 +503,8 @@ class ST7789:
 
         self._reset()
         self._init_display()
-        logger.info("ST7789 display initialised (brightness=%d)", brightness)
+        logger.info("ST7789 display initialised (model=%s, %dx%d, brightness=%d)",
+                    model, self.width, self.height, brightness)
 
     def _cmd(self, cmd: int) -> None:
         self._GPIO.output(self.DC_PIN, self._GPIO.LOW)
@@ -468,7 +526,9 @@ class ST7789:
         time.sleep(0.15)
 
     def _init_display(self) -> None:
+        """Send full Waveshare init sequence using profile values for model-specific registers."""
         import time
+        p = self._profile
         self._cmd(0x01); time.sleep(0.15)   # SW reset
         self._cmd(0x11); time.sleep(0.12)   # Sleep out
         self._cmd(0xB2); self._data(bytes([0x0C, 0x0C, 0x00, 0x33, 0x33]))  # Porch control
@@ -476,7 +536,7 @@ class ST7789:
         self._cmd(0xBB); self._data(bytes([0x19]))                           # VCOMS
         self._cmd(0xC0); self._data(bytes([0x2C]))                           # LCM control
         self._cmd(0xC2); self._data(bytes([0x01]))                           # VDV/VRH enable
-        self._cmd(0xC3); self._data(bytes([0x12]))                           # VRH set
+        self._cmd(0xC3); self._data(bytes([p.vrh_set]))                      # VRH (model-specific)
         self._cmd(0xC4); self._data(bytes([0x20]))                           # VDV set
         self._cmd(0xC6); self._data(bytes([0x0F]))                           # Frame rate 60 Hz
         self._cmd(0xD0); self._data(bytes([0xA4, 0xA1]))                     # Power control 1
@@ -486,9 +546,11 @@ class ST7789:
                                            0x3F, 0x44, 0x51, 0x2F, 0x1F, 0x1F, 0x20, 0x23]))
         self._cmd(0x21)                                                      # Inversion on
         self._cmd(0x3A); self._data(bytes([0x05]))                           # 16-bit RGB565
-        self._cmd(0x36); self._data(bytes([0x00]))                           # MADCTL normal
-        self._cmd(0x2A); self._data(bytes([0x00, 0x00, 0x00, 0xEF]))        # Column 0–239
-        self._cmd(0x2B); self._data(bytes([0x00, 0x00, 0x00, 0xEF]))        # Row 0–239
+        self._cmd(0x36); self._data(bytes([p.madctl]))                       # MADCTL (model-specific)
+        self._cmd(0x2A); self._data(bytes([0x00, 0x00,                       # CASET
+                                           p.col_end_hi, p.col_end_lo]))
+        self._cmd(0x2B); self._data(bytes([0x00, 0x00,                       # RASET
+                                           p.row_end_hi, p.row_end_lo]))
         self._cmd(0x29); time.sleep(0.05)                                    # Display on
 
     def set_brightness(self, brightness: int) -> None:
@@ -496,12 +558,17 @@ class ST7789:
         self._pwm.ChangeDutyCycle(max(0, min(255, brightness)) / 255 * 100)
 
     def show_image(self, image: Image.Image) -> None:
-        """Push a 240×240 RGB PIL Image to the display."""
-        self._cmd(0x2A); self._data(bytes([0x00, 0x00, 0x00, 0xEF]))
-        self._cmd(0x2B); self._data(bytes([0x00, 0x00, 0x00, 0xEF]))
+        """Push a PIL Image to the display using the profile's pixel window."""
+        p = self._profile
+        self._cmd(0x2A)
+        self._data(bytes([0x00, 0x00, p.col_end_hi, p.col_end_lo]))
+        self._cmd(0x2B)
+        self._data(bytes([0x00, 0x00, p.row_end_hi, p.row_end_lo]))
         self._cmd(0x2C)
         import numpy as np
-        arr = np.frombuffer(image.convert("RGB").tobytes(), dtype=np.uint8).reshape(HEIGHT, WIDTH, 3)
+        arr = np.frombuffer(
+            image.convert("RGB").tobytes(), dtype=np.uint8
+        ).reshape(self.height, self.width, 3)
         r = arr[:, :, 0].astype(np.uint16)
         g = arr[:, :, 1].astype(np.uint16)
         b = arr[:, :, 2].astype(np.uint16)
@@ -525,7 +592,10 @@ class ST7789:
 class Renderer:
     """Builds PIL images for each screen state and pushes to ST7789.
 
-    Faithful port of display_ui.cpp screen state machine.
+    All geometry is derived from self._w / self._h (read from the attached
+    display at construction time) so layouts adapt to both 240×240 and
+    320×240 screens without code changes. Module-level WIDTH/HEIGHT are
+    used only as a fallback for mock displays in tests.
     """
 
     # Completion animation timing (DISP-10)
@@ -534,6 +604,9 @@ class Renderer:
 
     def __init__(self, display: ST7789) -> None:
         self._display = display
+        # Read dimensions from display; fall back to 240×240 for mocks (DISP-01)
+        self._w: int = getattr(display, "width", WIDTH)
+        self._h: int = getattr(display, "height", HEIGHT)
         self._frame = 0
         self._anim_start: Optional[float] = None
         self._last_frame: Optional[Image.Image] = None
@@ -549,8 +622,9 @@ class Renderer:
         """Render the appropriate screen and push to display.
 
         Called from the main render thread every 250 ms (DISP-01).
+        Image dimensions match self._w × self._h.
         """
-        image = Image.new("RGB", (WIDTH, HEIGHT), BG_COLOR)
+        image = Image.new("RGB", (self._w, self._h), BG_COLOR)
         draw = ImageDraw.Draw(image)
 
         if screen_state == SCREEN_SPLASH:
@@ -575,13 +649,16 @@ class Renderer:
         self._frame += 1
 
     def get_preview_png(self) -> Optional[bytes]:
-        """Return the last rendered frame as PNG bytes, or None if not yet rendered."""
+        """Return the last rendered frame as 3× scaled PNG bytes (DISP-17).
+
+        Output is self._w*3 × self._h*3 (e.g. 720×720 for 240×240, 960×720 for 320×240).
+        Returns None if no frame has been rendered yet.
+        """
         if self._last_frame is None:
             return None
         import io
         buf = io.BytesIO()
-        # Scale up 3x so it's readable in a browser (240×240 → 720×720)
-        img = self._last_frame.resize((WIDTH * 3, HEIGHT * 3), Image.NEAREST)
+        img = self._last_frame.resize((self._w * 3, self._h * 3), Image.NEAREST)
         img.save(buf, format="PNG")
         return buf.getvalue()
 
@@ -589,27 +666,43 @@ class Renderer:
         """Boot splash screen with version and printer name."""
         f_large = _font(28, bold=True)
         f_small = _font(12)
-        draw.text((WIDTH // 2 - 60, 80), "BambuHelper", font=f_large, fill=ACCENT_COLOR)
-        draw.text((WIDTH // 2 - 30, 115), "v1.0.0", font=f_small, fill=DIM_COLOR)
+        title = "BambuHelper"
+        try:
+            tw = draw.textbbox((0, 0), title, font=f_large)[2]
+        except AttributeError:
+            tw, _ = draw.textsize(title, font=f_large)  # type: ignore[attr-defined]
+        draw.text((self._w // 2 - tw // 2, 80), title, font=f_large, fill=ACCENT_COLOR)
+        version = "v1.0.0"
+        try:
+            vw = draw.textbbox((0, 0), version, font=f_small)[2]
+        except AttributeError:
+            vw, _ = draw.textsize(version, font=f_small)  # type: ignore[attr-defined]
+        draw.text((self._w // 2 - vw // 2, 115), version, font=f_small, fill=DIM_COLOR)
         name = config.get("printer_name", "My Printer")
         try:
-            bw = draw.textbbox((0, 0), name, font=f_small)[2]
+            nw = draw.textbbox((0, 0), name, font=f_small)[2]
         except AttributeError:
-            bw, _ = draw.textsize(name, font=f_small)  # type: ignore[attr-defined]
-        draw.text((WIDTH // 2 - bw // 2, 150), name, font=f_small, fill=TEXT_COLOR)
+            nw, _ = draw.textsize(name, font=f_small)  # type: ignore[attr-defined]
+        draw.text((self._w // 2 - nw // 2, 150), name, font=f_small, fill=TEXT_COLOR)
 
     def _render_connecting(self, draw: ImageDraw.ImageDraw, error_count: int) -> None:
         """Connecting screen: spinner + animated dots + attempt counter. (DISP-08, DISP-09)"""
         f_small = _font(11)
         f_tiny = _font(9)
+        f_title = _font(16, bold=True)
 
-        # Title
-        draw.text((60, 10), "BambuHelper", font=_font(16, bold=True), fill=ACCENT_COLOR)
+        # Title — centred
+        title = "BambuHelper"
+        try:
+            ttw = draw.textbbox((0, 0), title, font=f_title)[2]
+        except AttributeError:
+            ttw, _ = draw.textsize(title, font=f_title)  # type: ignore[attr-defined]
+        draw.text((self._w // 2 - ttw // 2, 10), title, font=f_title, fill=ACCENT_COLOR)
 
         # Spinner (DISP-08): 12° advance, 60° arc width, CW
         angle = (self._frame * 12) % 360
         end_angle = (angle + 60) % 360
-        cx, cy, r = WIDTH // 2, HEIGHT // 2 - 10, 28
+        cx, cy, r = self._w // 2, self._h // 2 - 10, 28
         bbox = [cx - r, cy - r, cx + r, cy + r]
         draw.arc(bbox, start=angle, end=end_angle, fill=ACCENT_COLOR, width=4)
 
@@ -623,149 +716,173 @@ class Renderer:
 
         # Attempt counter
         if error_count > 0:
-            draw.text((10, HEIGHT - 30),
-                      f"Attempt {error_count}", font=f_tiny, fill=DIM_COLOR)
+            draw.text((10, self._h - 30), f"Attempt {error_count}", font=f_tiny, fill=DIM_COLOR)
 
-        # Mode indicator
-        draw.text((10, HEIGHT - 18), "MQTT", font=f_tiny, fill=DIM_COLOR)
+        draw.text((10, self._h - 18), "MQTT", font=f_tiny, fill=DIM_COLOR)
 
     def _render_idle(self, draw: ImageDraw.ImageDraw, state: dict[str, Any]) -> None:
         """Idle screen: nozzle + bed arc gauges only. (DISP-11)"""
-        f_small = _font(9)
-        f_value = _font(14, bold=True)
+        f_small = _font(10)
+        f_value = _font(16, bold=True)
         f_header = _font(12, bold=True)
 
-        # Header
         draw.text((8, 8), "IDLE", font=f_header, fill=BADGE_COLORS.get("IDLE", DIM_COLOR))
 
-        # Nozzle gauge (left-centre)
+        gauge_cy = self._h // 2
+        gauge_r = 50
+
         _draw_arc_gauge(
-            draw, cx=80, cy=120, radius=45,
+            draw, cx=self._w // 4, cy=gauge_cy, radius=gauge_r,
             value=state.get("nozzle_temp", 0),
             max_value=_GAUGE_MAX["nozzle"],
             color=_GAUGE_COLORS["nozzle"],
             label="Nozzle", unit="°",
             icon=ICON_NOZZLE,
             font_small=f_small, font_value=f_value,
+            arc_width=6,
         )
-
-        # Bed gauge (right-centre)
         _draw_arc_gauge(
-            draw, cx=175, cy=120, radius=45,
+            draw, cx=(self._w * 3) // 4, cy=gauge_cy, radius=gauge_r,
             value=state.get("bed_temp", 0),
             max_value=_GAUGE_MAX["bed"],
             color=_GAUGE_COLORS["bed"],
             label="Bed", unit="°",
             icon=ICON_BED,
             font_small=f_small, font_value=f_value,
+            arc_width=6,
         )
 
         self._draw_bottom_bar(draw, state)
 
     def _render_printing(self, draw: ImageDraw.ImageDraw, state: dict[str, Any]) -> None:
-        """Printing screen: 2 large arc gauges (nozzle + bed) top, progress + ETA bottom."""
+        """Printing dashboard: 2 large arc gauges top + progress/ETA panels bottom. (DISP-03)"""
         speed = state.get("speed_level", 2)
         bar_color = SPEED_COLORS.get(speed, SPEED_COLORS[2])
 
-        # LED progress bar at top (DISP-05)
-        progress = float(state.get("progress", 0) or 0)
-        fill_w = int(progress / 100 * 236)
+        # LED progress bar at top (DISP-05) — width scales with display
+        progress = state.get("progress", 0)
+        bar_width = self._w - 4
+        fill_w = int(progress / 100 * bar_width)
         if fill_w > 0:
             draw.rectangle([2, 1, 2 + fill_w, PROGRESS_BAR_HEIGHT], fill=bar_color)
             glow = tuple(min(255, c + 60) for c in bar_color)
             draw.line([(2, 1), (2 + fill_w, 1)], fill=glow, width=1)
 
-        # Header: task name + gcode badge (y=7-25)
+        # Header: job name (left) + gcode state badge (right)
         self._draw_header(draw, state)
 
-        # ── Top row: nozzle + bed arc gauges (y=30-136) ───────────────────
-        f_gauge_label = _font(12)
-        f_gauge_value = _font(20, bold=True)
-        _GAUGE_CY = 86
-        _GAUGE_R = 50
+        # Top row: 2 large arc gauges — Nozzle (left) + Bed (right)
+        f_small = _font(11)
+        f_value = _font(20, bold=True)
 
         _draw_arc_gauge(
-            draw, cx=60, cy=_GAUGE_CY, radius=_GAUGE_R,
+            draw, cx=self._w // 4, cy=83, radius=50,
             value=state.get("nozzle_temp", 0),
             max_value=_GAUGE_MAX["nozzle"],
             color=_GAUGE_COLORS["nozzle"],
             label="Nozzle", unit="°",
             icon=ICON_NOZZLE,
-            font_small=f_gauge_label, font_value=f_gauge_value,
+            font_small=f_small, font_value=f_value,
             arc_width=6,
         )
         _draw_arc_gauge(
-            draw, cx=180, cy=_GAUGE_CY, radius=_GAUGE_R,
+            draw, cx=(self._w * 3) // 4, cy=83, radius=50,
             value=state.get("bed_temp", 0),
             max_value=_GAUGE_MAX["bed"],
             color=_GAUGE_COLORS["bed"],
             label="Bed", unit="°",
             icon=ICON_BED,
-            font_small=f_gauge_label, font_value=f_gauge_value,
+            font_small=f_small, font_value=f_value,
             arc_width=6,
         )
 
-        # Horizontal divider between rows
-        draw.line([(4, 140), (236, 140)], fill=TRACK_COLOR, width=1)
+        # Horizontal divider
+        draw.line([(4, 140), (self._w - 4, 140)], fill=TRACK_COLOR, width=1)
 
-        # ── Bottom row: progress (left) | ETA (right) (y=143-218) ─────────
-        # Vertical divider between the two panels
-        draw.line([(120, 142), (120, 218)], fill=TRACK_COLOR, width=1)
+        # Vertical divider splitting bottom panels
+        panel_mid = self._w // 2
+        draw.line([(panel_mid, 142), (panel_mid, self._h - 20)], fill=TRACK_COLOR, width=1)
 
-        # Left panel: big progress percentage
-        f_prog = _font(34, bold=True)
-        f_panel_sub = _font(10)
-        prog_str = f"{int(progress)}%"
-        try:
-            pw = draw.textbbox((0, 0), prog_str, font=f_prog)[2]
-        except AttributeError:
-            pw, _ = draw.textsize(prog_str, font=f_prog)  # type: ignore[attr-defined]
-        draw.text((60 - pw // 2, 150), prog_str, font=f_prog, fill=_GAUGE_COLORS["progress"])
-        try:
-            plw = draw.textbbox((0, 0), "Progress", font=f_panel_sub)[2]
-        except AttributeError:
-            plw, _ = draw.textsize("Progress", font=f_panel_sub)  # type: ignore[attr-defined]
-        draw.text((60 - plw // 2, 200), "Progress", font=f_panel_sub, fill=DIM_COLOR)
+        # Bottom-left panel: large progress %
+        self._draw_progress_panel(draw, state, cx=self._w // 4)
 
-        # Right panel: ETA (or PAUSED / FAILED status)
-        gcode = state.get("gcode_state", "")
-        f_eta = _font(22, bold=True)
-        if gcode == "PAUSE":
-            msg = "PAUSED"
-            fm = _font(16, bold=True)
-            try:
-                mw = draw.textbbox((0, 0), msg, font=fm)[2]
-            except AttributeError:
-                mw, _ = draw.textsize(msg, font=fm)  # type: ignore[attr-defined]
-            draw.text((180 - mw // 2, 167), msg, font=fm, fill=SPEED_COLORS[3])
-        elif gcode == "FAILED":
-            msg = "FAILED"
-            fm = _font(16, bold=True)
-            try:
-                mw = draw.textbbox((0, 0), msg, font=fm)[2]
-            except AttributeError:
-                mw, _ = draw.textsize(msg, font=fm)  # type: ignore[attr-defined]
-            draw.text((180 - mw // 2, 167), msg, font=fm, fill=SPEED_COLORS[4])
-        else:
-            mins = float(state.get("remaining_minutes", 0) or 0)
-            eta_str = "--" if mins <= 0 else (
-                f"{int(mins) // 60}h {int(mins) % 60:02d}m" if mins >= 60
-                else f"{int(mins)}m"
-            )
-            try:
-                ew = draw.textbbox((0, 0), eta_str, font=f_eta)[2]
-            except AttributeError:
-                ew, _ = draw.textsize(eta_str, font=f_eta)  # type: ignore[attr-defined]
-            draw.text((180 - ew // 2, 153), eta_str, font=f_eta, fill=TEXT_COLOR)
-            _draw_bitmap(draw, 165, 195, ICON_CLOCK, 16, 16, DIM_COLOR)
-            try:
-                rlw = draw.textbbox((0, 0), "remaining", font=f_panel_sub)[2]
-            except AttributeError:
-                rlw, _ = draw.textsize("remaining", font=f_panel_sub)  # type: ignore[attr-defined]
-            draw.text((180 - rlw // 2, 197), "remaining", font=f_panel_sub, fill=DIM_COLOR)
+        # Bottom-right panel: ETA or PAUSED/FAILED (DISP-15)
+        self._draw_eta_panel(draw, state, cx=(self._w * 3) // 4)
 
-        # Bottom bar: WiFi | Layer | Speed (y=222-240)
+        # Bottom bar (DISP-14)
         self._draw_bottom_bar(draw, state)
+
+    def _draw_progress_panel(
+        self, draw: ImageDraw.ImageDraw, state: dict[str, Any], cx: int
+    ) -> None:
+        """Large progress percentage centred at cx in the bottom-left panel."""
+        f_large = _font(34, bold=True)
+        f_label = _font(11)
+        progress = state.get("progress", 0)
+        val_str = f"{int(progress)}%"
+        try:
+            tb = draw.textbbox((0, 0), val_str, font=f_large)
+            tw, th = tb[2] - tb[0], tb[3] - tb[1]
+        except AttributeError:
+            tw, th = draw.textsize(val_str, font=f_large)  # type: ignore[attr-defined]
+        y_val = 155
+        draw.text((cx - tw // 2, y_val), val_str, font=f_large, fill=TEXT_COLOR)
+        label = "Progress"
+        try:
+            lb = draw.textbbox((0, 0), label, font=f_label)
+            lw = lb[2] - lb[0]
+        except AttributeError:
+            lw, _ = draw.textsize(label, font=f_label)  # type: ignore[attr-defined]
+        draw.text((cx - lw // 2, y_val + th + 4), label, font=f_label, fill=DIM_COLOR)
+
+    def _draw_eta_panel(
+        self, draw: ImageDraw.ImageDraw, state: dict[str, Any], cx: int
+    ) -> None:
+        """ETA, PAUSED, or FAILED text centred at cx in the bottom-right panel. (DISP-15)"""
+        gcode = state.get("gcode_state", "")
+        f_status = _font(22, bold=True)
+        f_eta = _font(22, bold=True)
+        f_label = _font(11)
+        y_val = 155
+
+        if gcode == "PAUSE":
+            text = "PAUSED"
+            color = SPEED_COLORS[3]
+            try:
+                tw = draw.textbbox((0, 0), text, font=f_status)[2]
+            except AttributeError:
+                tw, _ = draw.textsize(text, font=f_status)  # type: ignore[attr-defined]
+            draw.text((cx - tw // 2, y_val + 6), text, font=f_status, fill=color)
+
+        elif gcode == "FAILED":
+            text = "FAILED"
+            color = SPEED_COLORS[4]
+            try:
+                tw = draw.textbbox((0, 0), text, font=f_status)[2]
+            except AttributeError:
+                tw, _ = draw.textsize(text, font=f_status)  # type: ignore[attr-defined]
+            draw.text((cx - tw // 2, y_val + 6), text, font=f_status, fill=color)
+
+        else:
+            mins = state.get("remaining_minutes", 0) or 0
+            if mins > 0:
+                h, m = divmod(int(mins), 60)
+                eta_str = f"{h}h {m:02d}m" if h else f"{m}m"
+            else:
+                eta_str = "--"
+            try:
+                tb = draw.textbbox((0, 0), eta_str, font=f_eta)
+                tw, th = tb[2] - tb[0], tb[3] - tb[1]
+            except AttributeError:
+                tw, th = draw.textsize(eta_str, font=f_eta)  # type: ignore[attr-defined]
+            draw.text((cx - tw // 2, y_val), eta_str, font=f_eta, fill=TEXT_COLOR)
+            label = "remaining"
+            try:
+                lb = draw.textbbox((0, 0), label, font=f_label)
+                lw = lb[2] - lb[0]
+            except AttributeError:
+                lw, _ = draw.textsize(label, font=f_label)  # type: ignore[attr-defined]
+            draw.text((cx - lw // 2, y_val + th + 4), label, font=f_label, fill=DIM_COLOR)
 
     def _draw_header(self, draw: ImageDraw.ImageDraw, state: dict[str, Any]) -> None:
         """Draw printer name (left) and gcode_state badge (right) at Y=7."""
@@ -773,38 +890,33 @@ class Renderer:
         gcode = state.get("gcode_state", "")
         badge_color = BADGE_COLORS.get(gcode, DIM_COLOR)
 
-        # Printer name (truncated)
         name = state.get("subtask_name", "") or "Printing"
         if len(name) > 16:
             name = name[:15] + "…"
         draw.text((4, 8), name, font=f, fill=TEXT_COLOR)
 
-        # State badge (right-aligned)
         badge = gcode if gcode else "???"
         try:
             bw = draw.textbbox((0, 0), badge, font=f)[2]
         except AttributeError:
             bw, _ = draw.textsize(badge, font=f)  # type: ignore[attr-defined]
-        draw.text((WIDTH - bw - 4, 8), badge, font=f, fill=badge_color)
+        draw.text((self._w - bw - 4, 8), badge, font=f, fill=badge_color)
 
     def _draw_bottom_bar(self, draw: ImageDraw.ImageDraw, state: dict[str, Any]) -> None:
-        """WiFi RSSI | Layer N/M | Speed level at Y=220. (DISP-14)"""
+        """WiFi RSSI | Layer N/M | Speed level at bottom of screen. (DISP-14)"""
         f = _font(9)
-        y = 222
+        y = self._h - 18
 
-        # WiFi signal
         rssi = state.get("wifi_signal", 0)
         _draw_bitmap(draw, 2, y, ICON_WIFI, 16, 16, DIM_COLOR)
         draw.text((20, y + 1), f"{rssi}dBm", font=f, fill=DIM_COLOR)
 
-        # Layer count
         layer = state.get("layer_num", 0)
         total = state.get("total_layers", 0)
         if total > 0:
-            _draw_bitmap(draw, WIDTH // 2 - 30, y, ICON_LAYERS, 16, 16, DIM_COLOR)
-            draw.text((WIDTH // 2 - 12, y + 1), f"{layer}/{total}", font=f, fill=DIM_COLOR)
+            _draw_bitmap(draw, self._w // 2 - 30, y, ICON_LAYERS, 16, 16, DIM_COLOR)
+            draw.text((self._w // 2 - 12, y + 1), f"{layer}/{total}", font=f, fill=DIM_COLOR)
 
-        # Speed level
         speed = state.get("speed_level", 2)
         speed_labels = {1: "SILENT", 2: "STANDARD", 3: "SPORT", 4: "LUDICROUS"}
         label = speed_labels.get(speed, "")
@@ -813,7 +925,7 @@ class Renderer:
             sw = draw.textbbox((0, 0), label, font=f)[2]
         except AttributeError:
             sw, _ = draw.textsize(label, font=f)  # type: ignore[attr-defined]
-        draw.text((WIDTH - sw - 4, y + 1), label, font=f, fill=color)
+        draw.text((self._w - sw - 4, y + 1), label, font=f, fill=color)
 
     def _render_finished(self, draw: ImageDraw.ImageDraw, state: dict[str, Any]) -> None:
         """Completion animation: expanding ring + checkmark. (DISP-10, DISP-12)"""
@@ -821,11 +933,10 @@ class Renderer:
             self._anim_start = time.monotonic()
 
         elapsed_ms = (time.monotonic() - self._anim_start) * 1000
-        cx, cy = WIDTH // 2, HEIGHT // 2 - 10
+        cx, cy = self._w // 2, self._h // 2 - 10
         f = _font(12)
         f_small = _font(10)
 
-        # Ring animation (0–400ms: expand 10→45px)
         if elapsed_ms < self._ANIM_RING_MS:
             radius = int(10 + (45 - 10) * (elapsed_ms / self._ANIM_RING_MS))
         else:
@@ -837,14 +948,16 @@ class Renderer:
             start=0, end=359, fill=ring_color, width=3,
         )
 
-        # Checkmark appears at 400ms (DISP-10)
         if elapsed_ms >= self._ANIM_CHECK_MS:
             _draw_bitmap(draw, cx - 16, cy - 16, ICON_CHECK_32, 32, 32, ring_color)
 
-        # "Print Complete!" text
-        draw.text((cx - 58, cy + radius + 8), "Print Complete!", font=f, fill=ring_color)
+        complete_text = "Print Complete!"
+        try:
+            ctw = draw.textbbox((0, 0), complete_text, font=f)[2]
+        except AttributeError:
+            ctw, _ = draw.textsize(complete_text, font=f)  # type: ignore[attr-defined]
+        draw.text((cx - ctw // 2, cy + radius + 8), complete_text, font=f, fill=ring_color)
 
-        # Filename
         name = state.get("subtask_name", "")
         if name:
             if len(name) > 22:
@@ -853,7 +966,7 @@ class Renderer:
                 nw = draw.textbbox((0, 0), name, font=f_small)[2]
             except AttributeError:
                 nw, _ = draw.textsize(name, font=f_small)  # type: ignore[attr-defined]
-            draw.text((WIDTH // 2 - nw // 2, cy + radius + 26), name, font=f_small, fill=DIM_COLOR)
+            draw.text((cx - nw // 2, cy + radius + 26), name, font=f_small, fill=DIM_COLOR)
 
     def _render_clock(self, draw: ImageDraw.ImageDraw) -> None:
         """Digital clock + date. (DISP-13)"""
@@ -872,8 +985,8 @@ class Renderer:
             tw, _ = draw.textsize(time_str, font=f_time)  # type: ignore[attr-defined]
             dw, _ = draw.textsize(date_str, font=f_date)  # type: ignore[attr-defined]
 
-        draw.text((WIDTH // 2 - tw // 2, 80), time_str, font=f_time, fill=TEXT_COLOR)
-        draw.text((WIDTH // 2 - dw // 2, 140), date_str, font=f_date, fill=DIM_COLOR)
+        draw.text((self._w // 2 - tw // 2, 80), time_str, font=f_time, fill=TEXT_COLOR)
+        draw.text((self._w // 2 - dw // 2, 140), date_str, font=f_date, fill=DIM_COLOR)
 
     def reset_anim(self) -> None:
         """Reset completion animation state (call when entering SCREEN_FINISHED)."""

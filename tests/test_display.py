@@ -53,6 +53,7 @@ from display import (
     SCREEN_SPLASH, SCREEN_CONNECTING, SCREEN_IDLE, SCREEN_PRINTING,
     SCREEN_FINISHED, SCREEN_CLOCK, SCREEN_OFF,
     BG_COLOR, WIDTH, HEIGHT, PROGRESS_BAR_HEIGHT, SPEED_COLORS,
+    DISPLAY_PROFILES,
     _draw_arc_gauge, _draw_bitmap,
 )
 from bambu import DEFAULT_STATE
@@ -319,3 +320,92 @@ class TestBitmapIcon:
         img = Image.new("RGB", (40, 40), BG_COLOR)
         draw = ImageDraw.Draw(img)
         _draw_bitmap(draw, 4, 4, disp_module.ICON_CHECK_32, 32, 32, (0, 220, 80))
+
+
+# ------------------------------------------------------------------ #
+# Display profiles (CFG-06)                                            #
+# ------------------------------------------------------------------ #
+
+class TestDisplayProfiles:
+    def test_profile_registry_contains_all_models(self):
+        assert "waveshare_1in54" in DISPLAY_PROFILES
+        assert "waveshare_2in0" in DISPLAY_PROFILES
+        assert "waveshare_1in3" in DISPLAY_PROFILES
+
+    def test_154_profile_is_240x240(self):
+        p = DISPLAY_PROFILES["waveshare_1in54"]
+        assert p.width == 240 and p.height == 240
+        assert p.madctl == 0x00
+
+    def test_2in0_profile_is_320x240(self):
+        p = DISPLAY_PROFILES["waveshare_2in0"]
+        assert p.width == 320 and p.height == 240
+        assert p.madctl == 0x70
+        assert p.col_end_hi == 0x01 and p.col_end_lo == 0x3F  # column 319
+
+    def test_1in3_profile_is_240x240_with_alt_vrh(self):
+        p = DISPLAY_PROFILES["waveshare_1in3"]
+        assert p.width == 240 and p.height == 240
+        assert p.vrh_set == 0x0B
+
+    def test_unknown_model_not_in_registry(self):
+        assert DISPLAY_PROFILES.get("waveshare_99in0") is None
+
+    def test_renderer_uses_display_width_height(self):
+        """Renderer reads width/height from display and produces correctly sized images."""
+        d = _make_display()
+        d.width = 320
+        d.height = 240
+        r = Renderer(d)
+        r.render(SCREEN_PRINTING, _printing_state(), "connected", 0, _MOCK_CONFIG)
+        assert d._images[-1].size == (320, 240)
+
+    def test_renderer_320x240_all_screen_states(self):
+        """All screen states must render without error at 320×240."""
+        d = _make_display()
+        d.width = 320
+        d.height = 240
+        r = Renderer(d)
+        states_and_data = [
+            (SCREEN_SPLASH, {}),
+            (SCREEN_CONNECTING, {}),
+            (SCREEN_IDLE, _printing_state()),
+            (SCREEN_PRINTING, _printing_state()),
+            (SCREEN_FINISHED, _printing_state(gcode_state="FINISH")),
+            (SCREEN_CLOCK, {}),
+            (SCREEN_OFF, {}),
+        ]
+        for screen, state in states_and_data:
+            r.render(screen, state, "connected", 0, _MOCK_CONFIG)
+            assert d._images[-1].size == (320, 240), f"{screen} produced wrong size"
+
+    def test_progress_bar_scales_with_320w(self):
+        """At 100% progress on 320×240 display, bar should reach x=317 (2 + 316 - 1)."""
+        d = _make_display()
+        d.width = 320
+        d.height = 240
+        r = Renderer(d)
+        r.render(SCREEN_PRINTING, _printing_state(progress=100), "connected", 0, _MOCK_CONFIG)
+        img = d._images[-1]
+        assert img.getpixel((315, 2)) != BG_COLOR, "Progress bar should extend to x=315 at 100%"
+
+    def test_240w_display_fallback_when_no_width_attr(self):
+        """Mock display without width attr falls back to WIDTH=240."""
+        d = _make_display()  # no width/height set
+        r = Renderer(d)
+        assert r._w == WIDTH
+        assert r._h == HEIGHT
+
+    def test_preview_png_scales_with_display_dimensions(self):
+        """Preview PNG should be 3× the display dimensions."""
+        d = _make_display()
+        d.width = 320
+        d.height = 240
+        r = Renderer(d)
+        r.render(SCREEN_PRINTING, _printing_state(), "connected", 0, _MOCK_CONFIG)
+        png = r.get_preview_png()
+        assert png is not None
+        from PIL import Image as PILImage
+        import io
+        img = PILImage.open(io.BytesIO(png))
+        assert img.size == (960, 720)  # 320*3 × 240*3

@@ -260,3 +260,33 @@ class TestPasswordHashing:
         h = cfg_module.hash_password("")
         assert cfg_module.verify_password("", h) is True
         assert cfg_module.verify_password("notempty", h) is False
+
+
+# ------------------------------------------------------------------ #
+# display_model field (CFG-06)                                         #
+# ------------------------------------------------------------------ #
+
+class TestDisplayModelConfig:
+    def test_default_display_model_is_154(self):
+        assert cfg_module.DEFAULTS["display_model"] == "waveshare_1in54"
+
+    def test_valid_display_models_accepted(self):
+        for model in ("waveshare_1in54", "waveshare_2in0", "waveshare_1in3"):
+            data = {**_valid_lan_config(), "display_model": model}
+            errors = cfg_module.validate_config(data)
+            assert errors == [], f"Model {model!r} should be valid but got: {errors}"
+
+    def test_invalid_display_model_rejected(self):
+        data = {**_valid_lan_config(), "display_model": "waveshare_99in0"}
+        errors = cfg_module.validate_config(data)
+        assert any("display_model" in e for e in errors)
+
+    def test_missing_display_model_filled_by_defaults(self, tmp_path):
+        """Old configs without display_model load successfully (default applied)."""
+        path = str(tmp_path / "config.json")
+        data = _valid_lan_config()  # no display_model key
+        with open(path, "w") as f:
+            import json
+            json.dump(data, f)
+        result = cfg_module.load_config(path)
+        assert result["display_model"] == "waveshare_1in54"

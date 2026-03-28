@@ -95,13 +95,21 @@ Key mappings:
 - PROGMEM bitmap arrays → Python `bytes` literals in `display.py`
 - `millis()` → `time.monotonic() * 1000`
 
-**SCREEN_PRINTING layout** (diverges from original 2×3 grid — redesigned for readability):
-- Top row (y≈30–136): 2 large arc gauges — **Nozzle** (cx=60) and **Bed** (cx=180), radius=50, arc_width=6, 20 px value font
-- Bottom-left panel (x=0–120, y=143–218): progress percentage in 34 px bold, "Progress" sub-label
-- Bottom-right panel (x=120–240, y=143–218): ETA in 22 px bold + "remaining" label; replaced by "PAUSED"/"FAILED" when applicable
-- Bottom bar (y=222–240): WiFi RSSI | Layer N/M | Speed level
+**SCREEN_PRINTING layout** (2 gauges top, progress+ETA bottom — all geometry uses `self._w`/`self._h`):
+- Top row (y≈33–133): 2 large arc gauges — **Nozzle** (cx=w/4) and **Bed** (cx=3w/4), radius=50, arc_width=6, 20 px value font
+- Horizontal divider at y=140; vertical divider at x=w/2
+- Bottom-left panel (x=0–w/2, y=143–218): progress % in 34 px bold + "Progress" label
+- Bottom-right panel (x=w/2–w, y=143–218): ETA in 22 px bold + "remaining" label; replaced by "PAUSED"/"FAILED" when applicable
+- Bottom bar (y=h-18 to h): WiFi RSSI | Layer N/M | Speed level
 
-**Preview endpoint**: `GET /preview` on the portal returns the last rendered frame as a 3× scaled PNG (720×720).
+**Multi-screen support** (CFG-06, INST-07):
+- `DISPLAY_PROFILES` dict in `display.py` maps model name → `DisplayProfile(width, height, madctl, col_end_hi, col_end_lo, row_end_hi, row_end_lo, vrh_set)`
+- `ST7789(model=...)` resolves the profile; exposes `self.width` / `self.height`
+- `Renderer.__init__` reads `self._w = getattr(display, "width", WIDTH)` — mocks without `width` fall back to 240
+- Supported: `waveshare_1in54` (240×240, default), `waveshare_2in0` (320×240, MADCTL=0x70), `waveshare_1in3` (240×240, VRH=0x0B)
+
+**Preview endpoint**: `GET /preview` on the portal returns the last rendered frame as a 3× scaled PNG
+(720×720 for 240×240, 960×720 for 320×240).
 The `Renderer` is shared via module-level `_renderer_ref = [None]` in `main.py`; `portal.py` reads `renderer_ref[0]`.
 
 ## How to Run Tests
@@ -150,7 +158,7 @@ Port is randomly assigned 4001–65000 at install time — shown in the install 
 | `/` | Config form |
 | `/save` | Save + reconnect |
 | `/status` | Live printer state JSON |
-| `/preview` | Last display frame as 3× PNG (720×720) |
+| `/preview` | Last display frame as 3× PNG (720×720 for 240×240, 960×720 for 320×240) |
 | `/health` | Liveness check (no auth) |
 
 Auth: no password set → localhost-only (HTTP 403 from remote). Password set → HTTP Basic Auth, username `admin`.

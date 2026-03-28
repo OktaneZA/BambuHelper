@@ -17,11 +17,11 @@
 
 | ID | Requirement |
 |----|-------------|
-| DISP-01 | 240×240 ST7789 SPI display at 250 ms refresh rate (~4 Hz) |
-| DISP-02 | Ten screen states matching original BambuHelper: SPLASH, CONNECTING_MQTT, IDLE, PRINTING, FINISHED, CLOCK, OFF (AP/WiFi states skipped — Pi handles WiFi natively) |
-| DISP-03 | SCREEN_PRINTING: 2-row layout. Top row: Nozzle Temp arc gauge (left, cx=60) + Bed Temp arc gauge (right, cx=180), radius=50, arc\_width=6. Bottom row split by vertical divider: left panel = large progress percentage (34 px bold); right panel = ETA countdown or PAUSED/FAILED status (22 px bold). |
+| DISP-01 | ST7789 SPI display at 250 ms refresh rate (~4 Hz). Supported models: `waveshare_1in54` (240×240, default), `waveshare_1in3` (240×240, alternate init), `waveshare_2in0` (320×240). Selected via `display_model` in config.json (CFG-06). |
+| DISP-02 | Seven screen states: SPLASH, CONNECTING, IDLE, PRINTING, FINISHED, CLOCK, OFF |
+| DISP-03 | SCREEN_PRINTING: 2-row layout. Top row: Nozzle Temp arc gauge (cx=w/4) + Bed Temp arc gauge (cx=3w/4), radius=50, arc\_width=6, 20 px bold value font. Bottom row split by vertical divider at w/2: left panel = large progress % (34 px bold + "Progress" label); right panel = ETA (22 px bold + "remaining" label) or PAUSED/FAILED when applicable. On 320×240 displays gauge centres are at 80 and 240 px; progress bar spans 316 px. |
 | DISP-04 | Arc gauges: 60°–300° sweep (240° span); track arc in `(12, 28, 28)`; fill arc proportional to value/max |
-| DISP-05 | LED progress bar: Y=0–5, full-width 236 px; fill = `progress/100 * 236`; colour set by speed level |
+| DISP-05 | LED progress bar: Y=0–5, fill = `progress/100 * (display_width - 4)` px; colour set by speed level |
 | DISP-06 | Speed-level colour coding: 1=silent blue `(0,120,255)`, 2=standard green `(0,255,64)`, 3=sport orange `(255,160,0)`, 4=ludicrous red `(255,0,0)` |
 | DISP-07 | 16×16 monochrome bitmap icons: nozzle, bed, fan, clock, layers, WiFi, check; 32×32 checkmark for completion animation |
 | DISP-08 | Spinner animation: 12° advance per 250 ms frame, 60° arc width, wraps at 360° |
@@ -33,7 +33,7 @@
 | DISP-14 | Bottom bar: WiFi RSSI (dBm) | Layer N/M | speed level label |
 | DISP-15 | ETA displayed in printing screen bottom-right panel; "PAUSED" or "FAILED" replaces ETA text when gcode\_state matches |
 | DISP-16 | Background colour `(8, 12, 24)` (RGB565 `0x0861`); text white `(255,255,255)` |
-| DISP-17 | `GET /preview` portal endpoint returns the last rendered frame as a 3× scaled PNG (720×720); requires auth; returns HTTP 503 if no frame yet rendered |
+| DISP-17 | `GET /preview` portal endpoint returns the last rendered frame as a 3× scaled PNG (e.g. 720×720 for 240×240, 960×720 for 320×240); requires auth; returns HTTP 503 if no frame yet rendered |
 
 ## Networking
 
@@ -70,6 +70,7 @@
 | CFG-03 | All config fields have documented defaults; missing fields filled from defaults on load |
 | CFG-04 | Config validated at load time; invalid config raises `ValueError` with actionable message |
 | CFG-05 | Config writes are atomic: write to `.tmp`, then `os.replace()` |
+| CFG-06 | `display_model` selects the screen hardware profile. Valid values: `waveshare_1in54` (default, 240×240), `waveshare_2in0` (320×240), `waveshare_1in3` (240×240, alternate init). Old configs without this key default to `waveshare_1in54` via DEFAULTS merge. |
 
 ## Installation
 
@@ -81,3 +82,4 @@
 | INST-04 | Installer creates system user `bambu-helper` and adds to `spi` and `gpio` groups |
 | INST-05 | Service managed by systemd; starts on boot after `network-online.target` |
 | INST-06 | `validate.py` performs 5 post-install checks and prints `[ PASS ]` / `[ FAIL ]` per check |
+| INST-07 | Installer prompts user to select display model (1.54"/2.0"/1.3") and writes `display_model` to config.json. Skipped when config already exists (idempotent). Invalid choice defaults to `waveshare_1in54` with a warning. Selected model shown in install summary. |

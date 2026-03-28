@@ -133,6 +133,7 @@ def create_app(
         new_cfg["bambu_region"] = form.get("bambu_region", "us")
         new_cfg["display_brightness"] = int(form.get("display_brightness", 100))
         new_cfg["display_rotation"] = int(form.get("display_rotation", 0))
+        new_cfg["display_model"] = form.get("display_model", "waveshare_1in54")
         new_cfg["finish_timeout_s"] = int(form.get("finish_timeout_s", 300))
         new_cfg["show_clock"] = form.get("show_clock") == "on"
         new_cfg["portal_port"] = int(form.get("portal_port", 8080))

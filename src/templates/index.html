@@ -221,6 +221,14 @@
           </select>
         </div>
         <div class="field">
+          <label>Display Model</label>
+          <select name="display_model">
+            <option value="waveshare_1in54" {% if cfg.display_model == 'waveshare_1in54' %}selected{% endif %}>Waveshare 1.54" 240×240</option>
+            <option value="waveshare_2in0"  {% if cfg.display_model == 'waveshare_2in0'  %}selected{% endif %}>Waveshare 2.0" 320×240</option>
+            <option value="waveshare_1in3"  {% if cfg.display_model == 'waveshare_1in3'  %}selected{% endif %}>Waveshare 1.3" 240×240</option>
+          </select>
+        </div>
+        <div class="field">
           <label>Finish Timeout (s)</label>
           <input type="number" name="finish_timeout_s" value="{{ cfg.finish_timeout_s }}" min="0">
         </div>

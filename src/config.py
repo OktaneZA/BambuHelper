@@ -32,6 +32,7 @@ DEFAULTS: dict[str, Any] = {
     "bambu_region": "us",               # "us" | "eu" | "cn"
     "display_brightness": 100,          # 0–255
     "display_rotation": 0,              # 0 | 90 | 180 | 270
+    "display_model": "waveshare_1in54", # CFG-06: screen hardware profile
     "finish_timeout_s": 300,            # seconds → SCREEN_CLOCK
     "show_clock": True,
     "portal_password": "",              # SEC-04/SEC-08: empty = local-only mode; set to PBKDF2 hash for remote access
@@ -151,6 +152,13 @@ def validate_config(data: dict[str, Any]) -> list[str]:
     rotation = data.get("display_rotation", 0)
     if rotation not in (0, 90, 180, 270):
         errors.append(f"display_rotation must be 0, 90, 180, or 270; got {rotation!r}")
+
+    _VALID_DISPLAY_MODELS = {"waveshare_1in54", "waveshare_2in0", "waveshare_1in3"}
+    model = data.get("display_model", "waveshare_1in54")
+    if model not in _VALID_DISPLAY_MODELS:
+        errors.append(
+            f"display_model must be one of {sorted(_VALID_DISPLAY_MODELS)}, got {model!r}"
+        )
 
     brightness = data.get("display_brightness", 100)
     if not isinstance(brightness, int) or not (0 <= brightness <= 255):

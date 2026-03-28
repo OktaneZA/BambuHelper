@@ -246,6 +246,30 @@ echo ""
 # No default — empty string means local-only mode (SEC-04)
 
 # ------------------------------------------------------------------ #
+# Select display screen model (CFG-06)                                 #
+# ------------------------------------------------------------------ #
+
+echo ""
+echo "Select display screen model:"
+echo "  1) Waveshare 1.54\"  240×240 ST7789  [default, recommended]"
+echo "  2) Waveshare 2.0\"   320×240 ST7789"
+echo "  3) Waveshare 1.3\"   240×240 ST7789"
+read -r -p "Enter 1, 2, or 3 [1]: " SCREEN_CHOICE </dev/tty || true
+SCREEN_CHOICE="${SCREEN_CHOICE:-1}"
+
+case "$SCREEN_CHOICE" in
+    2) DISPLAY_MODEL="waveshare_2in0" ;;
+    3) DISPLAY_MODEL="waveshare_1in3" ;;
+    *)
+        DISPLAY_MODEL="waveshare_1in54"
+        if [[ "$SCREEN_CHOICE" != "1" ]]; then
+            warn "Unrecognised choice '${SCREEN_CHOICE}' — defaulting to 1.54\" (waveshare_1in54)"
+        fi
+        ;;
+esac
+info "Display model: ${DISPLAY_MODEL}"
+
+# ------------------------------------------------------------------ #
 # Find a free port above 4000 (CFG-02)                                #
 # ------------------------------------------------------------------ #
 
@@ -306,6 +330,7 @@ cat > "${CONFIG_FILE}" <<JSONEOF
   "bambu_region": "${REGION}",
   "display_brightness": 100,
   "display_rotation": 0,
+  "display_model": "${DISPLAY_MODEL}",
   "finish_timeout_s": 300,
   "show_clock": true,
   "portal_password": "${PORTAL_PASSWORD_HASH}",
@@ -366,9 +391,11 @@ echo -e "${GREEN}  BambuHelper installed successfully!${NC}"
 echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
 PORTAL_IP=$(hostname -I | awk '{print $1}')
-# Read port from config in case we skipped the prompts
+# Read values from config in case we skipped the prompts
 DISPLAY_PORT="${PORTAL_PORT:-$(python3 -c "import json; print(json.load(open('${CONFIG_FILE}'))['portal_port'])" 2>/dev/null || echo '???')}"
 DISPLAY_PASS="${PORTAL_PASSWORD:-$(python3 -c "import json; print(json.load(open('${CONFIG_FILE}'))['portal_password'])" 2>/dev/null || echo '')}"
+DISPLAY_MODEL_SHOWN="${DISPLAY_MODEL:-$(python3 -c "import json; print(json.load(open('${CONFIG_FILE}')).get('display_model','waveshare_1in54'))" 2>/dev/null || echo '???')}"
+echo -e "  Display:     ${CYAN}${DISPLAY_MODEL_SHOWN}${NC}"
 echo -e "  Web portal:  ${CYAN}http://${PORTAL_IP}:${DISPLAY_PORT}${NC}"
 if [[ -n "${DISPLAY_PASS}" ]]; then
     echo -e "  Credentials: ${CYAN}admin / <password set during install>${NC}  (stored as PBKDF2 hash)"

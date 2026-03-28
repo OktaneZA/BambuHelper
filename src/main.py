@@ -294,7 +294,10 @@ def main() -> None:
 
     # Initialise display (fail fast on hardware error)
     try:
-        display = ST7789(brightness=config.get("display_brightness", 100))
+        display = ST7789(
+            brightness=config.get("display_brightness", 100),
+            model=config.get("display_model", "waveshare_1in54"),
+        )
     except Exception as exc:  # noqa: BLE001
         logger.error("Failed to initialise display: %s", exc)
         sys.exit(1)
