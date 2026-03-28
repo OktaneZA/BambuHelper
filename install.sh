@@ -246,30 +246,6 @@ echo ""
 # No default — empty string means local-only mode (SEC-04)
 
 # ------------------------------------------------------------------ #
-# Select display screen model (CFG-06)                                 #
-# ------------------------------------------------------------------ #
-
-echo ""
-echo "Select display screen model:"
-echo "  1) Waveshare 1.54\"  240×240 ST7789  [default, recommended]"
-echo "  2) Waveshare 2.0\"   320×240 ST7789"
-echo "  3) Waveshare 1.3\"   240×240 ST7789"
-read -r -p "Enter 1, 2, or 3 [1]: " SCREEN_CHOICE </dev/tty || true
-SCREEN_CHOICE="${SCREEN_CHOICE:-1}"
-
-case "$SCREEN_CHOICE" in
-    2) DISPLAY_MODEL="waveshare_2in0" ;;
-    3) DISPLAY_MODEL="waveshare_1in3" ;;
-    *)
-        DISPLAY_MODEL="waveshare_1in54"
-        if [[ "$SCREEN_CHOICE" != "1" ]]; then
-            warn "Unrecognised choice '${SCREEN_CHOICE}' — defaulting to 1.54\" (waveshare_1in54)"
-        fi
-        ;;
-esac
-info "Display model: ${DISPLAY_MODEL}"
-
-# ------------------------------------------------------------------ #
 # Find a free port above 4000 (CFG-02)                                #
 # ------------------------------------------------------------------ #
 
@@ -343,6 +319,81 @@ chmod 640 "${CONFIG_FILE}"
 info "Config written with permissions 640 (${SERVICE_USER}:${SERVICE_USER})"
 
 fi # end SKIP_CONFIG
+
+# ------------------------------------------------------------------ #
+# Select display screen model (CFG-06, INST-07)                        #
+#                                                                       #
+# ST7789 is write-only SPI — resolution cannot be auto-detected.       #
+# If a config already exists, show the current value and let the user  #
+# keep or change it. On a fresh install, always prompt.                #
+# ------------------------------------------------------------------ #
+
+step "Selecting display screen model"
+
+_model_label() {
+    case "$1" in
+        waveshare_2in0)  echo "Waveshare 2.0\"  320×240 ST7789" ;;
+        waveshare_1in3)  echo "Waveshare 1.3\"  240×240 ST7789" ;;
+        *)               echo "Waveshare 1.54\" 240×240 ST7789 (default)" ;;
+    esac
+}
+
+# Read current model from existing config (empty string if none)
+CURRENT_MODEL=""
+if [[ -f "${CONFIG_FILE}" ]]; then
+    CURRENT_MODEL=$(python3 -c \
+        "import json; print(json.load(open('${CONFIG_FILE}')).get('display_model',''))" \
+        2>/dev/null || echo "")
+fi
+
+if [[ -n "${CURRENT_MODEL}" ]]; then
+    info "Current display model: $(_model_label "${CURRENT_MODEL}") (${CURRENT_MODEL})"
+    echo ""
+    read -r -p "Keep current display model? [Y/n]: " KEEP_MODEL </dev/tty || true
+    KEEP_MODEL="${KEEP_MODEL:-y}"
+    if [[ "${KEEP_MODEL,,}" == "y" ]]; then
+        DISPLAY_MODEL="${CURRENT_MODEL}"
+        info "Keeping: ${DISPLAY_MODEL}"
+    else
+        CURRENT_MODEL=""  # fall through to prompt below
+    fi
+fi
+
+if [[ -z "${CURRENT_MODEL}" ]]; then
+    echo ""
+    echo "Select display screen model:"
+    echo "  1) Waveshare 1.54\"  240×240 ST7789  [default, recommended]"
+    echo "  2) Waveshare 2.0\"   320×240 ST7789"
+    echo "  3) Waveshare 1.3\"   240×240 ST7789"
+    read -r -p "Enter 1, 2, or 3 [1]: " SCREEN_CHOICE </dev/tty || true
+    SCREEN_CHOICE="${SCREEN_CHOICE:-1}"
+    case "$SCREEN_CHOICE" in
+        2) DISPLAY_MODEL="waveshare_2in0" ;;
+        3) DISPLAY_MODEL="waveshare_1in3" ;;
+        *)
+            DISPLAY_MODEL="waveshare_1in54"
+            if [[ "$SCREEN_CHOICE" != "1" ]]; then
+                warn "Unrecognised choice '${SCREEN_CHOICE}' — defaulting to 1.54\" (waveshare_1in54)"
+            fi
+            ;;
+    esac
+    info "Selected: $(_model_label "${DISPLAY_MODEL}")"
+fi
+
+# Patch display_model into config — works for both new and existing configs
+python3 - <<PYEOF
+import json, sys
+path = "${CONFIG_FILE}"
+try:
+    with open(path) as f:
+        cfg = json.load(f)
+except Exception:
+    sys.exit(0)  # new install — written below in JSONEOF block
+cfg["display_model"] = "${DISPLAY_MODEL}"
+with open(path, "w") as f:
+    json.dump(cfg, f, indent=2)
+    f.write("\n")
+PYEOF
 
 # ------------------------------------------------------------------ #
 # Install systemd service (INST-05)                                    #
